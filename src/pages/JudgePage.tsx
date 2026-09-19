@@ -7,6 +7,14 @@ import {
   getJudgeScoreForAct,
   resetMockScores,
 } from '../services/judgeService';
+import {
+  signInWithEmailPassword,
+  signOutSession,
+  getCurrentSession,
+  checkIsActiveJudge,
+  subscribeToAuthChanges,
+} from '../services/authService';
+import { isSupabaseEnabled } from '../lib/supabase/client';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -21,6 +29,8 @@ import { KeyRound, ArrowRight, AlertTriangle } from 'lucide-react';
 export const JudgePage: React.FC = () => {
   const [judgingState, setJudgingState] = useState<JudgingState>('access');
   const [codeInput, setCodeInput] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [judge, setJudge] = useState<JudgeIdentity | null>(null);
   const [activeActIndex, setActiveActIndex] = useState(0);
 
@@ -36,6 +46,35 @@ export const JudgePage: React.FC = () => {
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   const currentAct: Act = MOCK_ACTS[activeActIndex] || MOCK_ACTS[0];
+
+  // Initial Auth Check for Supabase
+  useEffect(() => {
+    if (!isSupabaseEnabled) return;
+
+    const checkInitialSession = async () => {
+      const session = await getCurrentSession();
+      if (session?.user) {
+        const activeJudge = await checkIsActiveJudge(session.user.id);
+        if (activeJudge) {
+          setJudge(activeJudge);
+        }
+      }
+    };
+
+    checkInitialSession();
+
+    const unsubscribe = subscribeToAuthChanges(async (session) => {
+      if (session?.user) {
+        const activeJudge = await checkIsActiveJudge(session.user.id);
+        setJudge(activeJudge);
+      } else {
+        setJudge(null);
+        setJudgingState('access');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Check if current judge has already scored current act
   useEffect(() => {
@@ -62,18 +101,37 @@ export const JudgePage: React.FC = () => {
     };
   }, [judge, activeActIndex]);
 
-  // Handle Judge PIN Authentication
-  const handleAuthenticate = async (codeToUse: string) => {
+  // Handle Judge Authentication
+  const handleAuthenticate = async (codeToUse?: string) => {
     setErrorMsg(null);
     setJudgingState('loading');
 
     try {
-      const authenticatedJudge = await authenticateJudgeCode(codeToUse);
-      if (authenticatedJudge) {
-        setJudge(authenticatedJudge);
+      if (isSupabaseEnabled) {
+        const { user, error } = await signInWithEmailPassword(emailInput, passwordInput);
+        if (error || !user) {
+          setErrorMsg(error || 'Invalid credentials.');
+          setJudgingState('access');
+          return;
+        }
+
+        const activeJudge = await checkIsActiveJudge(user.id);
+        if (!activeJudge) {
+          setErrorMsg('Your account is not registered as an active judge.');
+          await signOutSession();
+          setJudgingState('access');
+          return;
+        }
+
+        setJudge(activeJudge);
       } else {
-        setErrorMsg('Judge code not recognized. Please check your assigned code (e.g. JUDGE-01).');
-        setJudgingState('access');
+        const authenticatedJudge = await authenticateJudgeCode(codeToUse || codeInput);
+        if (authenticatedJudge) {
+          setJudge(authenticatedJudge);
+        } else {
+          setErrorMsg('Judge code not recognized. Please check your assigned code (e.g. JUDGE-01).');
+          setJudgingState('access');
+        }
       }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Authentication error occurred. Try again.');
@@ -168,22 +226,53 @@ export const JudgePage: React.FC = () => {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (codeInput.trim()) handleAuthenticate(codeInput);
+                handleAuthenticate();
               }}
-              className="space-y-4 text-left"
+              className="space-y-4 text-left font-mono text-xs"
             >
-              <div>
-                <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
-                  JUDGE ACCESS CODE <span className="text-amber-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={codeInput}
-                  onChange={(e) => setCodeInput(e.target.value)}
-                  placeholder="e.g. JUDGE-01"
-                  className="w-full px-4 py-3.5 bg-[#141420] border border-[#27273C] text-white font-mono text-sm uppercase tracking-widest focus:outline-none focus:border-amber-400"
-                />
-              </div>
+              {isSupabaseEnabled ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
+                      JUDGE EMAIL <span className="text-amber-400">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="judge@spotlight.internal"
+                      className="w-full px-4 py-3.5 bg-[#141420] border border-[#27273C] text-white font-mono text-sm focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
+                      PASSWORD <span className="text-amber-400">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="w-full px-4 py-3.5 bg-[#141420] border border-[#27273C] text-white font-mono text-sm focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
+                    JUDGE ACCESS CODE <span className="text-amber-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value)}
+                    placeholder="e.g. JUDGE-01"
+                    className="w-full px-4 py-3.5 bg-[#141420] border border-[#27273C] text-white font-mono text-sm uppercase tracking-widest focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              )}
 
               <Button
                 type="submit"
@@ -196,10 +285,12 @@ export const JudgePage: React.FC = () => {
               </Button>
             </form>
 
-            <div className="p-3 bg-[#141420] border border-[#222234] text-[11px] font-mono text-zinc-400">
-              <span className="text-amber-400 font-bold block mb-1">MOCK DEMO CODES:</span>
-              <code>JUDGE-01</code>, <code>JUDGE-02</code>, or <code>JUDGE-03</code>
-            </div>
+            {!isSupabaseEnabled && (
+              <div className="p-3 bg-[#141420] border border-[#222234] text-[11px] font-mono text-zinc-400">
+                <span className="text-amber-400 font-bold block mb-1">MOCK DEMO CODES:</span>
+                <code>JUDGE-01</code>, <code>JUDGE-02</code>, or <code>JUDGE-03</code>
+              </div>
+            )}
           </div>
         )}
 
@@ -291,15 +382,17 @@ export const JudgePage: React.FC = () => {
           />
         )}
 
-        {/* DEV CONTROLS OVERLAY */}
-        <JudgeDevControls
-          onSelectJudge={handleAuthenticate}
-          onNextAct={handleNextAct}
-          onPrevAct={handlePrevAct}
-          onResetScores={resetMockScores}
-          activeJudgeCode={judge?.code}
-          activeActSlot={currentAct.slotNumber}
-        />
+        {/* DEV CONTROLS OVERLAY (Development Only) */}
+        {!import.meta.env.PROD && (
+          <JudgeDevControls
+            onSelectJudge={handleAuthenticate}
+            onNextAct={handleNextAct}
+            onPrevAct={handlePrevAct}
+            onResetScores={resetMockScores}
+            activeJudgeCode={judge?.code}
+            activeActSlot={currentAct.slotNumber}
+          />
+        )}
       </PageContainer>
     </main>
   );

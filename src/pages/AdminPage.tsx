@@ -11,6 +11,14 @@ import {
   updateLiveEventState,
   subscribeToEventState,
 } from '../services/adminService';
+import {
+  signInWithEmailPassword,
+  signOutSession,
+  getCurrentSession,
+  checkIsActiveAdmin,
+  subscribeToAuthChanges,
+} from '../services/authService';
+import { isSupabaseEnabled } from '../lib/supabase/client';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -30,6 +38,8 @@ import { Shield, KeyRound, ArrowRight, AlertTriangle } from 'lucide-react';
 export const AdminPage: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [codeInput, setCodeInput] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
@@ -49,6 +59,34 @@ export const AdminPage: React.FC = () => {
   });
 
   const currentAct = runningOrder.find((a) => a.id === liveState.currentActId) || runningOrder[0] || MOCK_ACTS[0];
+
+  // Initial Auth Check for Supabase
+  useEffect(() => {
+    if (!isSupabaseEnabled) return;
+
+    const checkInitialSession = async () => {
+      const session = await getCurrentSession();
+      if (session?.user) {
+        const isActiveAdmin = await checkIsActiveAdmin(session.user.id);
+        if (isActiveAdmin) {
+          setIsAuthenticated(true);
+        }
+      }
+    };
+
+    checkInitialSession();
+
+    const unsubscribe = subscribeToAuthChanges(async (session) => {
+      if (session?.user) {
+        const isActiveAdmin = await checkIsActiveAdmin(session.user.id);
+        setIsAuthenticated(isActiveAdmin);
+      } else {
+        setIsAuthenticated(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Load initial data and subscribe to Supabase Realtime
   useEffect(() => {
@@ -94,17 +132,43 @@ export const AdminPage: React.FC = () => {
     setIsLoggingIn(true);
 
     try {
-      const isValid = await authenticateAdminCode(codeInput);
-      if (isValid) {
+      if (isSupabaseEnabled) {
+        const { user, error } = await signInWithEmailPassword(emailInput, passwordInput);
+        if (error || !user) {
+          setErrorMsg(error || 'Invalid credentials.');
+          setIsLoggingIn(false);
+          return;
+        }
+
+        const isActiveAdmin = await checkIsActiveAdmin(user.id);
+        if (!isActiveAdmin) {
+          setErrorMsg("You don't have permission to access the Admin Control Center.");
+          await signOutSession();
+          setIsLoggingIn(false);
+          return;
+        }
+
         setIsAuthenticated(true);
       } else {
-        setErrorMsg('Admin access code not recognized. Try code: ADMIN-2026');
+        const isValid = await authenticateAdminCode(codeInput);
+        if (isValid) {
+          setIsAuthenticated(true);
+        } else {
+          setErrorMsg('Admin access code not recognized. Try code: ADMIN-2026');
+        }
       }
     } catch (err: any) {
       setErrorMsg('Authentication error. Try again.');
     } finally {
       setIsLoggingIn(false);
     }
+  };
+
+  const handleLogout = async () => {
+    if (isSupabaseEnabled) {
+      await signOutSession();
+    }
+    setIsAuthenticated(false);
   };
 
   // Status update callback
@@ -180,18 +244,49 @@ export const AdminPage: React.FC = () => {
             )}
 
             <form onSubmit={handleLogin} className="space-y-4 text-left font-mono text-xs">
-              <div>
-                <label className="block font-bold text-zinc-300 uppercase mb-2">
-                  ADMIN ACCESS CODE <span className="text-amber-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={codeInput}
-                  onChange={(e) => setCodeInput(e.target.value)}
-                  placeholder="e.g. ADMIN-2026"
-                  className="w-full px-4 py-3.5 bg-[#141420] border border-[#27273C] text-white text-sm uppercase tracking-widest focus:outline-none focus:border-amber-400"
-                />
-              </div>
+              {isSupabaseEnabled ? (
+                <>
+                  <div>
+                    <label className="block font-bold text-zinc-300 uppercase mb-2">
+                      ADMIN EMAIL <span className="text-amber-400">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="admin@spotlight.internal"
+                      className="w-full px-4 py-3.5 bg-[#141420] border border-[#27273C] text-white text-sm focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-zinc-300 uppercase mb-2">
+                      PASSWORD <span className="text-amber-400">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="w-full px-4 py-3.5 bg-[#141420] border border-[#27273C] text-white text-sm focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="block font-bold text-zinc-300 uppercase mb-2">
+                    ADMIN ACCESS CODE <span className="text-amber-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value)}
+                    placeholder="e.g. ADMIN-2026"
+                    className="w-full px-4 py-3.5 bg-[#141420] border border-[#27273C] text-white text-sm uppercase tracking-widest focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              )}
 
               <Button
                 type="submit"
@@ -211,17 +306,19 @@ export const AdminPage: React.FC = () => {
               </Button>
             </form>
 
-            <div className="p-3 bg-[#141420] border border-[#222234] text-[11px] font-mono text-zinc-400">
-              <span className="text-amber-400 font-bold block mb-1">MOCK DEMO ACCESS CODE:</span>
-              <code>ADMIN-2026</code>
-            </div>
+            {!isSupabaseEnabled && (
+              <div className="p-3 bg-[#141420] border border-[#222234] text-[11px] font-mono text-zinc-400">
+                <span className="text-amber-400 font-bold block mb-1">MOCK DEMO ACCESS CODE:</span>
+                <code>ADMIN-2026</code>
+              </div>
+            )}
           </div>
         </div>
       ) : (
         /* AUTHENTICATED DASHBOARD LAYOUT */
         <div className="flex flex-col min-h-screen">
           <AdminHeader
-            onLogout={() => setIsAuthenticated(false)}
+            onLogout={handleLogout}
             mobileMenuOpen={mobileMenuOpen}
             onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
           />
@@ -286,21 +383,23 @@ export const AdminPage: React.FC = () => {
             </section>
           </div>
 
-          {/* DEV CONTROLS TOOLBAR */}
-          <AdminDevControls
-            onResetEvent={async () => {
-              const [regs, acts, st] = await Promise.all([
-                getAdminRegistrations(),
-                getRunningOrder(),
-                getLiveEventState()
-              ]);
-              setRegistrations(regs);
-              setRunningOrder(acts);
-              setLiveState(st);
-            }}
-            onNextAct={handleNextAct}
-            onToggleVoting={() => handleUpdateLiveState({ votingOpen: !liveState.votingOpen })}
-          />
+          {/* DEV CONTROLS TOOLBAR (Development Only) */}
+          {!import.meta.env.PROD && (
+            <AdminDevControls
+              onResetEvent={async () => {
+                const [regs, acts, st] = await Promise.all([
+                  getAdminRegistrations(),
+                  getRunningOrder(),
+                  getLiveEventState()
+                ]);
+                setRegistrations(regs);
+                setRunningOrder(acts);
+                setLiveState(st);
+              }}
+              onNextAct={handleNextAct}
+              onToggleVoting={() => handleUpdateLiveState({ votingOpen: !liveState.votingOpen })}
+            />
+          )}
         </div>
       )}
     </main>

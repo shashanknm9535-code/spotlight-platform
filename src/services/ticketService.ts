@@ -166,46 +166,55 @@ export const processMockPaymentAndCreateTickets = async (
     };
   }
 
-  // ── SUPABASE LIVE PERSISTENCE ───────────────────────────────────────────────
-
-  // 1. Capacity check
-  const capacity = await checkEventCapacity(buyer.quantity);
-  if (!capacity.available) {
-    if (capacity.remaining === 0) {
-      throw new Error('Tickets are currently sold out.');
-    }
-    throw new Error(`Only ${capacity.remaining} ticket(s) remaining. Requested quantity exceeds event capacity.`);
-  }
-
-  // 2. Generate mock payment reference & order ID
-  const payRandom = Math.floor(10000000 + Math.random() * 90000000);
-  const orderRandom = Math.floor(1000 + Math.random() * 9000);
-  const mockPaymentRef = `MOCK-PAY-${payRandom}`;
-  const orderId = `SPT-ORD-2026-${orderRandom}`;
-  const now = new Date().toISOString();
-
-  // 3. Create N individual ticket records for N requested passes
-  const createdTickets: Ticket[] = [];
+  // ── SUPABASE LIVE PERSISTENCE WITH ATOMIC TRANSACTION LOCKING ───────────────
   try {
-    for (let i = 0; i < buyer.quantity; i++) {
-      const ticket = await createSingleTicketRecord(buyer, mockPaymentRef);
-      createdTickets.push(ticket);
+    const { data, error } = await (supabase as any).rpc('purchase_tickets_atomic', {
+      p_buyer_name: buyer.name.trim(),
+      p_buyer_email: buyer.email.trim(),
+      p_buyer_phone: buyer.phone.trim(),
+      p_quantity: buyer.quantity,
+      p_payment_method: 'upi',
+    });
+
+    if (error || !data || !data.success) {
+      const errMsg = error?.hint || error?.message || 'Ticket creation failed.';
+      if (errMsg.includes('CAPACITY_EXCEEDED')) {
+        throw new Error('Tickets are currently sold out or remaining capacity is insufficient.');
+      }
+      throw new Error(errMsg);
     }
+
+    const res = data as {
+      order_id: string;
+      order_code: string;
+      total_amount: number;
+      tickets: Array<{ id: string; ticket_code: string; status: string }>;
+    };
+
+    const tickets: Ticket[] = res.tickets.map((t) => ({
+      id: t.ticket_code,
+      qrValue: t.ticket_code,
+      buyerName: buyer.name,
+      buyerEmail: buyer.email,
+      buyerPhone: buyer.phone,
+      status: 'CONFIRMED',
+      createdAt: new Date().toISOString(),
+    }));
+
+    return {
+      id: res.order_code,
+      paymentId: 'MOCK-PAY-' + res.order_code,
+      tickets,
+      quantity: buyer.quantity,
+      unitPrice: TICKET_PRICE,
+      totalAmount: res.total_amount,
+      status: 'CONFIRMED',
+      createdAt: new Date().toISOString(),
+    };
   } catch (err: any) {
-    console.error('[TicketService] Failed during multi-ticket creation:', err);
+    console.error('[TicketService] Atomic purchase error:', err);
     throw new Error(err?.message || "We couldn't issue your tickets. Please try again.");
   }
-
-  return {
-    id: orderId,
-    paymentId: mockPaymentRef,
-    tickets: createdTickets,
-    quantity: buyer.quantity,
-    unitPrice: TICKET_PRICE,
-    totalAmount: buyer.quantity * TICKET_PRICE,
-    status: 'CONFIRMED',
-    createdAt: now,
-  };
 };
 
 /**

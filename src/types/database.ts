@@ -90,6 +90,7 @@ export interface JudgeRow {
   judge_code: string;         // unique e.g. JUDGE-01
   is_anchor: boolean;         // anchor judge used for tie-breaking
   is_active: boolean;
+  auth_user_id?: string | null;
   created_at: string;
 }
 
@@ -455,6 +456,16 @@ export interface Database {
       };
       admin_get_overview_stats: {
         Args: Record<string, never>;
+        Returns: Json;
+      };
+      purchase_tickets_atomic: {
+        Args: {
+          p_buyer_name: string;
+          p_buyer_email: string;
+          p_buyer_phone: string;
+          p_quantity: number;
+          p_payment_method?: string;
+        };
         Returns: Json;
       };
     };
