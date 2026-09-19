@@ -1,0 +1,31 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Navbar } from './components/layout/Navbar';
+import { Footer } from './components/layout/Footer';
+import { HomePage } from './pages/HomePage';
+import { PlaceholderPage } from './pages/PlaceholderPage';
+
+export const App: React.FC = () => {
+  return (
+    <Router>
+      <div className="min-h-screen bg-[#08080C] text-[#F4F4F6] flex flex-col justify-between selection:bg-amber-400 selection:text-black">
+        <Navbar />
+        <div className="grow">
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/register" element={<PlaceholderPage />} />
+            <Route path="/ticket" element={<PlaceholderPage />} />
+            <Route path="/vote" element={<PlaceholderPage />} />
+            <Route path="/judge" element={<PlaceholderPage />} />
+            <Route path="/admin" element={<PlaceholderPage />} />
+            <Route path="/stage" element={<PlaceholderPage />} />
+            <Route path="*" element={<PlaceholderPage />} />
+          </Routes>
+        </div>
+        <Footer />
+      </div>
+    </Router>
+  );
+};
+
+export default App;
