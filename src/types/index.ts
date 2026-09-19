@@ -188,3 +188,53 @@ export interface JudgeScore {
   submitted: boolean;
   createdAt: string;
 }
+
+/* Phase 6: Admin Dashboard Types */
+export type AdminTab =
+  | 'overview'
+  | 'registrations'
+  | 'running-order'
+  | 'tickets'
+  | 'live'
+  | 'judges'
+  | 'stage';
+
+export type RegistrationStatus = 'pending' | 'confirmed' | 'rejected';
+
+export interface AdminRegistration {
+  id: string;
+  actId: string;
+  performerName: string;
+  category: 'solo' | 'group';
+  performanceType: string;
+  department: string;
+  year: string;
+  phone: string;
+  email: string;
+  blurb: string;
+  photoUrl: string;
+  selfRating: number;
+  teamMembers: TeamMember[];
+  status: RegistrationStatus;
+  submittedAt: string;
+}
+
+export interface LiveEventState {
+  eventStatus: 'scheduled' | 'live' | 'paused' | 'ended';
+  currentActId: string;
+  votingOpen: boolean;
+  votingTimeRemaining: number;
+  totalVotesReceived: number;
+}
+
+export interface AdminTicketOrder {
+  id: string;
+  paymentId: string;
+  buyerName: string;
+  buyerEmail: string;
+  buyerPhone: string;
+  quantity: number;
+  totalAmount: number;
+  status: 'CONFIRMED';
+  createdAt: string;
+}
