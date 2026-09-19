@@ -1,4 +1,4 @@
-import type { EventStat, ParticipantType, StepFlow, ScoringSystem, CompetitionTrack, NavItem, Act } from '../types';
+import type { EventStat, ParticipantType, StepFlow, ScoringSystem, CompetitionTrack, NavItem, Act, JudgeIdentity } from '../types';
 
 export const EVENT_INFO = {
   name: 'SPOTLIGHT',
@@ -280,4 +280,29 @@ export const MOCK_VALID_TICKETS = [
   'SPT-TKT-2026-0003',
   'SPT-TKT-2026-00482',
   'SPT-TKT-2026-00483',
+];
+
+/* Phase 5: Mock Judge Profiles */
+export const MOCK_JUDGES: JudgeIdentity[] = [
+  {
+    id: 'judge-01',
+    code: 'JUDGE-01',
+    name: 'Dr. Sarah Jenkins',
+    title: 'Director of Vocal Performance & Sound Arts',
+    role: 'Judge 01 (Music & Vocals)',
+  },
+  {
+    id: 'judge-02',
+    code: 'JUDGE-02',
+    name: 'Marcus Chen',
+    title: 'Principal Choreographer & Performing Artist',
+    role: 'Judge 02 (Dance & Choreography)',
+  },
+  {
+    id: 'judge-03',
+    code: 'JUDGE-03',
+    name: 'Prof. Vikram Patel',
+    title: 'Chair of Dramatic Arts & Stage Direction',
+    role: 'Judge 03 (Theater & Stage Presence)',
+  },
 ];

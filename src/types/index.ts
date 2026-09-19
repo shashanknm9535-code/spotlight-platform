@@ -156,3 +156,35 @@ export interface VoteRecord {
   rating: number;
   timestamp: string;
 }
+
+/* Phase 5: Judge Judging Types */
+export type JudgingState =
+  | 'access'
+  | 'loading'
+  | 'scoring'
+  | 'review'
+  | 'submitting'
+  | 'locked'
+  | 'already_scored';
+
+export interface JudgeIdentity {
+  id: string;
+  code: string;
+  name: string;
+  title: string;
+  role: string;
+}
+
+export interface JudgeScore {
+  id: string;
+  judgeId: string;
+  actId: string;
+  creativity: number;
+  execution: number;
+  stagePresence: number;
+  audienceEngagement: number;
+  total: number;
+  notes?: string;
+  submitted: boolean;
+  createdAt: string;
+}
