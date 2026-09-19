@@ -40,14 +40,26 @@ export const JudgePage: React.FC = () => {
   // Check if current judge has already scored current act
   useEffect(() => {
     if (!judge) return;
-    const existing = getJudgeScoreForAct(judge.id, currentAct.id);
-    if (existing && existing.submitted) {
-      setSubmittedScore(existing);
-      setJudgingState('already_scored');
-    } else {
-      setSubmittedScore(null);
-      setJudgingState('scoring');
-    }
+    let isMounted = true;
+    const checkScore = async () => {
+      try {
+        const existing = await getJudgeScoreForAct(judge.code || judge.id, currentAct.id);
+        if (!isMounted) return;
+        if (existing && existing.submitted) {
+          setSubmittedScore(existing);
+          setJudgingState('already_scored');
+        } else {
+          setSubmittedScore(null);
+          setJudgingState('scoring');
+        }
+      } catch (err) {
+        console.warn('Error checking judge score:', err);
+      }
+    };
+    checkScore();
+    return () => {
+      isMounted = false;
+    };
   }, [judge, activeActIndex]);
 
   // Handle Judge PIN Authentication
@@ -64,7 +76,7 @@ export const JudgePage: React.FC = () => {
         setJudgingState('access');
       }
     } catch (err: any) {
-      setErrorMsg('Authentication error occurred. Try again.');
+      setErrorMsg(err?.message || 'Authentication error occurred. Try again.');
       setJudgingState('access');
     }
   };
@@ -92,6 +104,7 @@ export const JudgePage: React.FC = () => {
     try {
       const scoreRecord = await submitJudgeScore({
         judgeId: judge.id,
+        judgeCode: judge.code,
         actId: currentAct.id,
         creativity,
         execution,
@@ -104,7 +117,7 @@ export const JudgePage: React.FC = () => {
       setSubmittedScore(scoreRecord);
       setJudgingState('locked');
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to lock score.');
+      setErrorMsg(err?.message || 'Failed to lock score.');
       setJudgingState('scoring');
     }
   };

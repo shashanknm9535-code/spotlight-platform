@@ -402,6 +402,31 @@ export interface Database {
         };
         Returns: Json;
       };
+      get_judge_by_code: {
+        Args: {
+          judge_code_input: string;
+        };
+        Returns: Json;
+      };
+      get_judge_score_for_act: {
+        Args: {
+          judge_code_input: string;
+          act_id_input: string;
+        };
+        Returns: Json;
+      };
+      submit_judge_score: {
+        Args: {
+          judge_code_input: string;
+          act_id_input: string;
+          creativity_input: number;
+          execution_input: number;
+          stage_presence_input: number;
+          audience_engagement_input: number;
+          notes_input?: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       event_status: EventStatus;
