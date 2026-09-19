@@ -176,3 +176,48 @@ export const NAV_LINKS: NavItem[] = [
   { label: 'How It Works', href: '#how-it-works' },
   { label: 'Schedule', href: '#schedule' },
 ];
+
+/* Phase 2: Registration Data Options */
+export const PERFORMANCE_CATEGORIES = [
+  'Dance',
+  'Music',
+  'Singing',
+  'Theatre',
+  'Comedy',
+  'Spoken Word',
+  'Instrumental',
+  'Other',
+];
+
+export const DEPARTMENT_OPTIONS = [
+  'Computer Science & Engineering',
+  'Electronics & Communication',
+  'Mechanical Engineering',
+  'Civil Engineering',
+  'Information Technology',
+  'Commerce / Business Administration',
+  'Arts & Mass Communication',
+  'Basic Sciences',
+  'Other Department',
+];
+
+export const YEAR_OPTIONS = [
+  '1st Year',
+  '2nd Year',
+  '3rd Year',
+  '4th Year',
+  'Post-Graduate',
+];
+
+export const SELF_RATING_QUALIFIERS: Record<number, string> = {
+  1: 'FIRST TIMESTEP',
+  2: 'EMERGING ACT',
+  3: 'PRACTICED',
+  4: 'READY TO COMPETE',
+  5: 'SOLID PERFORMANCE',
+  6: 'HIGH ENERGY',
+  7: 'STAGE READY',
+  8: 'CONFIDENT',
+  9: 'SHOWSTOPPER',
+  10: 'GRAND CHAMPION LEVEL',
+};

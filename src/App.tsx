@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { HomePage } from './pages/HomePage';
+import { RegisterPage } from './pages/RegisterPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 export const App: React.FC = () => {
@@ -13,7 +14,7 @@ export const App: React.FC = () => {
         <div className="grow">
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/register" element={<PlaceholderPage />} />
+            <Route path="/register" element={<RegisterPage />} />
             <Route path="/ticket" element={<PlaceholderPage />} />
             <Route path="/vote" element={<PlaceholderPage />} />
             <Route path="/judge" element={<PlaceholderPage />} />

@@ -58,3 +58,37 @@ export interface NavItem {
   isCTA?: boolean;
   ctaVariant?: 'primary' | 'secondary';
 }
+
+/* Phase 2: Performer Registration Types */
+export type ActCategory = 'solo' | 'group';
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  department: string;
+  year: string;
+}
+
+export interface RegistrationFormData {
+  category: ActCategory | null;
+  name: string;
+  department: string;
+  year: string;
+  phone: string;
+  email: string;
+  performanceType: string;
+  otherPerformanceType?: string;
+  blurb: string;
+  photo: File | null;
+  photoPreview: string | null;
+  selfRating: number;
+  teamMembers: TeamMember[];
+  isConfirmed: boolean;
+}
+
+export interface RegistrationResult {
+  actId: string;
+  submittedAt: string;
+  status: 'PENDING REVIEW';
+  formData: RegistrationFormData;
+}
