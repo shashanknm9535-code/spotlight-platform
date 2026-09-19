@@ -1,11 +1,21 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MOCK_JUDGES, MOCK_ACTS } from '../../data/eventData';
 import { getJudgeMatrix } from '../../services/adminService';
 import { Badge } from '../ui/Badge';
 import { Award, CheckCircle2, Minus } from 'lucide-react';
 
 export const JudgesTab: React.FC = () => {
-  const matrix = getJudgeMatrix();
+  const [matrix, setMatrix] = useState<Record<string, Record<string, boolean>>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    getJudgeMatrix().then((m) => {
+      if (isMounted) setMatrix(m);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">

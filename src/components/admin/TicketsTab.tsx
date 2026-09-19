@@ -1,22 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import type { AdminTicketOrder } from '../../types';
 import { getAdminTickets } from '../../services/adminService';
 import { Badge } from '../ui/Badge';
 import { Search, Ticket, DollarSign, Users } from 'lucide-react';
 
 export const TicketsTab: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const tickets = getAdminTickets();
+  const [tickets, setTickets] = useState<AdminTicketOrder[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    getAdminTickets().then((t) => {
+      if (isMounted) setTickets(t);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const CAPACITY = 800;
-  const SOLD = 643;
-  const REMAINING = CAPACITY - SOLD;
+  const SOLD = tickets.reduce((acc, t) => acc + t.quantity, 0) || 643;
+  const REMAINING = Math.max(0, CAPACITY - SOLD);
   const REVENUE = SOLD * 10;
 
   const filtered = tickets.filter((t) =>
     t.buyerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     t.buyerEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.buyerPhone.includes(searchTerm)
+    (t.buyerPhone && t.buyerPhone.includes(searchTerm))
   );
 
   return (

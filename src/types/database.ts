@@ -427,6 +427,36 @@ export interface Database {
         };
         Returns: Json;
       };
+      admin_approve_registration: {
+        Args: {
+          act_id_input: string;
+        };
+        Returns: Json;
+      };
+      admin_reject_registration: {
+        Args: {
+          act_id_input: string;
+        };
+        Returns: Json;
+      };
+      admin_set_current_act: {
+        Args: {
+          act_id_input: string;
+        };
+        Returns: Json;
+      };
+      admin_update_event_state: {
+        Args: {
+          p_status?: string | null;
+          p_voting_open?: boolean | null;
+          p_current_act_id?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_get_overview_stats: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
     };
     Enums: {
       event_status: EventStatus;

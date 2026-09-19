@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { AdminTab, AdminRegistration, Act, LiveEventState, RegistrationStatus } from '../types';
 import { MOCK_ACTS } from '../data/eventData';
 import {
@@ -9,6 +9,7 @@ import {
   reorderActs,
   getLiveEventState,
   updateLiveEventState,
+  subscribeToEventState,
 } from '../services/adminService';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Badge } from '../components/ui/Badge';
@@ -26,7 +27,6 @@ import { ResultsTab } from '../components/admin/ResultsTab';
 import { AdminDevControls } from '../components/admin/AdminDevControls';
 import { Shield, KeyRound, ArrowRight, AlertTriangle } from 'lucide-react';
 
-
 export const AdminPage: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [codeInput, setCodeInput] = useState('');
@@ -38,13 +38,56 @@ export const AdminPage: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Admin Data Stores
-  const [registrations, setRegistrations] = useState<AdminRegistration[]>(getAdminRegistrations());
-  const [runningOrder, setRunningOrder] = useState<Act[]>(getRunningOrder());
-  const [liveState, setLiveState] = useState<LiveEventState>(getLiveEventState());
+  const [registrations, setRegistrations] = useState<AdminRegistration[]>([]);
+  const [runningOrder, setRunningOrder] = useState<Act[]>([]);
+  const [liveState, setLiveState] = useState<LiveEventState>({
+    eventStatus: 'live',
+    currentActId: 'act-01',
+    votingOpen: true,
+    votingTimeRemaining: 45,
+    totalVotesReceived: 0,
+  });
 
-  const currentAct = runningOrder.find((a) => a.id === liveState.currentActId) || runningOrder[0];
+  const currentAct = runningOrder.find((a) => a.id === liveState.currentActId) || runningOrder[0] || MOCK_ACTS[0];
 
-  // Handle Mock Login
+  // Load initial data and subscribe to Supabase Realtime
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let isMounted = true;
+
+    const loadData = async () => {
+      try {
+        const [regs, order, live] = await Promise.all([
+          getAdminRegistrations(),
+          getRunningOrder(),
+          getLiveEventState(),
+        ]);
+
+        if (!isMounted) return;
+        setRegistrations(regs);
+        setRunningOrder(order);
+        setLiveState(live);
+      } catch (err) {
+        console.warn('[AdminPage] Error loading admin data:', err);
+      }
+    };
+
+    loadData();
+
+    // Realtime subscription on events table changes
+    const unsubscribe = subscribeToEventState((newState) => {
+      if (isMounted) {
+        setLiveState(newState);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [isAuthenticated]);
+
+  // Handle Login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -67,7 +110,10 @@ export const AdminPage: React.FC = () => {
   // Status update callback
   const handleUpdateRegistrationStatus = async (id: string, status: RegistrationStatus) => {
     await updateRegistrationStatus(id, status);
-    setRegistrations(getAdminRegistrations());
+    const updatedRegs = await getAdminRegistrations();
+    setRegistrations(updatedRegs);
+    const updatedOrder = await getRunningOrder();
+    setRunningOrder(updatedOrder);
   };
 
   // Reorder callback
@@ -90,6 +136,7 @@ export const AdminPage: React.FC = () => {
 
   // Next Act
   const handleNextAct = async () => {
+    if (runningOrder.length === 0) return;
     const currentIdx = runningOrder.findIndex((a) => a.id === liveState.currentActId);
     const nextIdx = (currentIdx + 1) % runningOrder.length;
     const nextActId = runningOrder[nextIdx].id;
@@ -98,6 +145,7 @@ export const AdminPage: React.FC = () => {
 
   // Prev Act
   const handlePrevAct = async () => {
+    if (runningOrder.length === 0) return;
     const currentIdx = runningOrder.findIndex((a) => a.id === liveState.currentActId);
     const prevIdx = (currentIdx - 1 + runningOrder.length) % runningOrder.length;
     const prevActId = runningOrder[prevIdx].id;
@@ -240,10 +288,15 @@ export const AdminPage: React.FC = () => {
 
           {/* DEV CONTROLS TOOLBAR */}
           <AdminDevControls
-            onResetEvent={() => {
-              setRegistrations(getAdminRegistrations());
-              setRunningOrder(getRunningOrder());
-              setLiveState(getLiveEventState());
+            onResetEvent={async () => {
+              const [regs, acts, st] = await Promise.all([
+                getAdminRegistrations(),
+                getRunningOrder(),
+                getLiveEventState()
+              ]);
+              setRegistrations(regs);
+              setRunningOrder(acts);
+              setLiveState(st);
             }}
             onNextAct={handleNextAct}
             onToggleVoting={() => handleUpdateLiveState({ votingOpen: !liveState.votingOpen })}

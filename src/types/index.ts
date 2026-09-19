@@ -238,6 +238,7 @@ export interface AdminTicketOrder {
   totalAmount: number;
   status: 'CONFIRMED';
   createdAt: string;
+  tickets?: string[];
 }
 
 /* Phase 7: Score Aggregation Engine + Live Leaderboard Types */
