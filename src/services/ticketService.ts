@@ -1,27 +1,122 @@
 import type { BuyerDetails, TicketOrder, Ticket } from '../types';
-// TODO(Phase 8B): import { supabase, isSupabaseEnabled } from '@/lib/supabase/client';
+import { supabase, isSupabaseEnabled } from '../lib/supabase/client';
+import type { DbTicket, TicketInsert } from '../types/database';
 
-const TICKET_PRICE = 10;
+export const TICKET_PRICE = 10;
+export const EVENT_CAPACITY = 800;
 
 /**
- * Mock payment & ticket issuance service for Phase 3.
- * Simulates async payment gateway processing (1200ms delay)
- * and returns a generated TicketOrder object with unique ticket IDs & QR strings.
- *
- * Phase 8B Integration Path (Razorpay + Supabase — Phase 8C):
- *   1. Create Razorpay order → get order_id
- *   2. Confirm payment client-side
- *   3. Server-side verify signature
- *   4. supabase.from('tickets').insert({ ticket_code, buyer_name, payment_status: 'PAID', ... })
- *   5. Return ticket codes for QR generation
- *
- * Phase 8B (ticket validation):
- *   const { data } = await supabase
- *     .from('tickets')
- *     .select('id, ticket_code, payment_status')
- *     .eq('ticket_code', ticketId)
- *     .eq('payment_status', 'PAID')
- *     .single();
+ * Generates a unique Ticket Code in the format: SPT-TKT-2026-XXXXXX
+ * e.g., SPT-TKT-2026-482913
+ */
+export const generateTicketCode = (): string => {
+  const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+  return `SPT-TKT-2026-${randomSuffix}`;
+};
+
+/**
+ * Calculates total issued/paid tickets from Supabase.
+ */
+export const getTicketsIssuedCount = async (): Promise<number> => {
+  if (!isSupabaseEnabled || !supabase) {
+    return 643; // Mock initial count matching overview metrics
+  }
+
+  try {
+    const { data, error } = await (supabase
+      .from('tickets')
+      .select('quantity')
+      .eq('payment_status', 'PAID') as any);
+
+    if (error || !data) return 0;
+    return (data as { quantity: number }[]).reduce((sum, row) => sum + (row.quantity || 1), 0);
+  } catch (err) {
+    console.error('[TicketService] Error fetching issued ticket count:', err);
+    return 0;
+  }
+};
+
+/**
+ * Service-level capacity check (800 capacity limit).
+ */
+export const checkEventCapacity = async (
+  requestedQuantity: number
+): Promise<{ available: boolean; remaining: number }> => {
+  const issuedCount = await getTicketsIssuedCount();
+  const remaining = Math.max(0, EVENT_CAPACITY - issuedCount);
+  return {
+    available: remaining >= requestedQuantity,
+    remaining,
+  };
+};
+
+/**
+ * Helper to insert a single ticket record into Supabase with collision retry.
+ */
+const createSingleTicketRecord = async (
+  buyer: BuyerDetails,
+  paymentRef: string
+): Promise<Ticket> => {
+  if (!supabase) {
+    throw new Error('Supabase client is not configured.');
+  }
+
+  const maxRetries = 5;
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const ticketCode = generateTicketCode();
+    const now = new Date().toISOString();
+
+    const payload: TicketInsert = {
+      ticket_code: ticketCode,
+      buyer_name: buyer.name.trim(),
+      buyer_email: buyer.email.trim(),
+      buyer_phone: buyer.phone.trim() || null,
+      quantity: 1, // 1 voting pass per ticket record (Option B)
+      payment_status: 'PAID',
+      payment_reference: paymentRef,
+      issued_at: now,
+    };
+
+    const { data, error } = await supabase
+      .from('tickets')
+      .insert(payload as any)
+      .select()
+      .single();
+
+    if (!error && data) {
+      const dbRow = data as DbTicket;
+      return {
+        id: dbRow.ticket_code,
+        qrValue: dbRow.ticket_code,
+        buyerName: dbRow.buyer_name,
+        buyerEmail: dbRow.buyer_email,
+        buyerPhone: dbRow.buyer_phone || '',
+        status: dbRow.payment_status === 'PAID' ? 'CONFIRMED' : 'PENDING',
+        createdAt: dbRow.created_at,
+      };
+    }
+
+    // Postgres unique constraint violation on ticket_code -> retry with new code
+    if (error && error.code === '23505' && error.message?.includes('ticket_code')) {
+      console.warn(`[TicketService] Collision on ticket_code ${ticketCode}. Retrying (${attempt + 1}/${maxRetries})...`);
+      lastError = error;
+      continue;
+    }
+
+    console.error('[TicketService] Failed to insert ticket record:', error);
+    lastError = error;
+    break;
+  }
+
+  throw new Error("We couldn't generate your ticket pass. Please try again.");
+};
+
+/**
+ * Ticket order processing service.
+ * Simulates payment gateway processing and creates real ticket records in Supabase
+ * when VITE_USE_SUPABASE=true, or uses mock data when VITE_USE_SUPABASE=false.
  */
 export const processMockPaymentAndCreateTickets = async (
   buyer: BuyerDetails,
@@ -34,36 +129,197 @@ export const processMockPaymentAndCreateTickets = async (
     throw new Error('Payment was declined by the bank. Please try again.');
   }
 
-  const orderRandom = Math.floor(1000 + Math.random() * 9000);
-  const payRandom = Math.floor(1000 + Math.random() * 9000);
-  const orderId = `SPT-ORD-2026-${orderRandom}`;
-  const paymentId = `PAY-2026-${payRandom}`;
-  const now = new Date().toISOString();
+  if (buyer.quantity < 1 || buyer.quantity > 10) {
+    throw new Error('Ticket quantity must be between 1 and 10.');
+  }
 
-  const tickets: Ticket[] = Array.from({ length: buyer.quantity }, (_, i) => {
-    const tktRandom = Math.floor(10000 + Math.random() * 90000);
-    const tktId = `SPT-TKT-2026-${tktRandom + i}`;
+  // ── MOCK MODE FALLBACK ──────────────────────────────────────────────────────
+  if (!isSupabaseEnabled || !supabase) {
+    const orderRandom = Math.floor(1000 + Math.random() * 9000);
+    const payRandom = Math.floor(1000 + Math.random() * 9000);
+    const orderId = `SPT-ORD-2026-${orderRandom}`;
+    const paymentId = `PAY-2026-${payRandom}`;
+    const now = new Date().toISOString();
+
+    const tickets: Ticket[] = Array.from({ length: buyer.quantity }, (_, i) => {
+      const tktCode = generateTicketCode();
+      return {
+        id: tktCode,
+        qrValue: tktCode,
+        buyerName: buyer.name,
+        buyerEmail: buyer.email,
+        buyerPhone: buyer.phone,
+        status: 'CONFIRMED',
+        createdAt: now,
+      };
+    });
+
     return {
-      id: tktId,
-      qrValue: tktId,
-      buyerName: buyer.name,
-      buyerEmail: buyer.email,
-      buyerPhone: buyer.phone,
+      id: orderId,
+      paymentId,
+      tickets,
+      quantity: buyer.quantity,
+      unitPrice: TICKET_PRICE,
+      totalAmount: buyer.quantity * TICKET_PRICE,
       status: 'CONFIRMED',
       createdAt: now,
     };
-  });
+  }
 
-  const order: TicketOrder = {
+  // ── SUPABASE LIVE PERSISTENCE ───────────────────────────────────────────────
+
+  // 1. Capacity check
+  const capacity = await checkEventCapacity(buyer.quantity);
+  if (!capacity.available) {
+    if (capacity.remaining === 0) {
+      throw new Error('Tickets are currently sold out.');
+    }
+    throw new Error(`Only ${capacity.remaining} ticket(s) remaining. Requested quantity exceeds event capacity.`);
+  }
+
+  // 2. Generate mock payment reference & order ID
+  const payRandom = Math.floor(10000000 + Math.random() * 90000000);
+  const orderRandom = Math.floor(1000 + Math.random() * 9000);
+  const mockPaymentRef = `MOCK-PAY-${payRandom}`;
+  const orderId = `SPT-ORD-2026-${orderRandom}`;
+  const now = new Date().toISOString();
+
+  // 3. Create N individual ticket records for N requested passes
+  const createdTickets: Ticket[] = [];
+  try {
+    for (let i = 0; i < buyer.quantity; i++) {
+      const ticket = await createSingleTicketRecord(buyer, mockPaymentRef);
+      createdTickets.push(ticket);
+    }
+  } catch (err: any) {
+    console.error('[TicketService] Failed during multi-ticket creation:', err);
+    throw new Error(err?.message || "We couldn't issue your tickets. Please try again.");
+  }
+
+  return {
     id: orderId,
-    paymentId,
-    tickets,
+    paymentId: mockPaymentRef,
+    tickets: createdTickets,
     quantity: buyer.quantity,
     unitPrice: TICKET_PRICE,
     totalAmount: buyer.quantity * TICKET_PRICE,
     status: 'CONFIRMED',
     createdAt: now,
   };
+};
 
-  return order;
+/**
+ * Retrieves a single ticket by ticket_code for public/holder presentation.
+ */
+export const getTicket = async (ticketCode: string): Promise<Ticket | null> => {
+  const normalized = ticketCode.trim().toUpperCase();
+
+  if (!isSupabaseEnabled || !supabase) {
+    return {
+      id: normalized,
+      qrValue: normalized,
+      buyerName: 'Ticket Holder',
+      buyerEmail: 'holder@student.edu',
+      buyerPhone: '+91 98765 00000',
+      status: 'CONFIRMED',
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('id, ticket_code, buyer_name, buyer_email, buyer_phone, payment_status, created_at')
+      .eq('ticket_code', normalized)
+      .eq('payment_status', 'PAID')
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    const row = data as DbTicket;
+    return {
+      id: row.ticket_code,
+      qrValue: row.ticket_code,
+      buyerName: row.buyer_name,
+      buyerEmail: row.buyer_email,
+      buyerPhone: row.buyer_phone || '',
+      status: row.payment_status === 'PAID' ? 'CONFIRMED' : 'PENDING',
+      createdAt: row.created_at,
+    };
+  } catch (err) {
+    console.error('[TicketService] Error in getTicket:', err);
+    return null;
+  }
+};
+
+/**
+ * Retrieves all tickets from Supabase for Admin monitoring.
+ */
+export const getTickets = async (): Promise<DbTicket[]> => {
+  if (!isSupabaseEnabled || !supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+    return data as DbTicket[];
+  } catch (err) {
+    console.error('[TicketService] Error in getTickets:', err);
+    return [];
+  }
+};
+
+/**
+ * Ticket Validation for Voting (Foundation for Phase 8D).
+ * Verifies that the ticket exists and payment_status is PAID.
+ */
+export interface VotingTicketValidation {
+  valid: boolean;
+  ticketId?: string;
+  ticketCode?: string;
+  buyerName?: string;
+  error?: string;
+}
+
+export const validateTicketForVoting = async (
+  ticketCode: string
+): Promise<VotingTicketValidation> => {
+  const normalized = ticketCode.trim().toUpperCase();
+
+  if (!isSupabaseEnabled || !supabase) {
+    const isValid = normalized.startsWith('SPT-TKT-') && normalized.length >= 12;
+    if (isValid) {
+      return { valid: true, ticketId: normalized, ticketCode: normalized };
+    }
+    return { valid: false, error: 'Invalid or unrecognized ticket code.' };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('id, ticket_code, buyer_name, payment_status')
+      .eq('ticket_code', normalized)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { valid: false, error: 'Ticket pass not found in event registry.' };
+    }
+
+    const row = data as DbTicket;
+    if (row.payment_status !== 'PAID') {
+      return { valid: false, error: 'Ticket payment status is not confirmed.' };
+    }
+
+    return {
+      valid: true,
+      ticketId: row.id,
+      ticketCode: row.ticket_code,
+      buyerName: row.buyer_name,
+    };
+  } catch (err) {
+    console.error('[TicketService] Error in validateTicketForVoting:', err);
+    return { valid: false, error: 'Ticket validation error. Please try again.' };
+  }
 };
