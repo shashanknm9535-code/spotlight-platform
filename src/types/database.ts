@@ -1,4 +1,4 @@
-﻿/**
+/**
  * src/types/database.ts
  *
  * Supabase database type definitions for Spotlight.
@@ -151,17 +151,116 @@ export interface EventLogRow {
   created_at: string;
 }
 
-// ─── Insert Types (omit auto-generated fields) ────────────────────────────────
+// ─── Insert Types ─────────────────────────────────────────────────────────────
 
-export type EventInsert = Omit<EventRow, 'id' | 'created_at' | 'updated_at'>;
-export type ActInsert = Omit<ActRow, 'id' | 'created_at' | 'updated_at'>;
-export type ActMemberInsert = Omit<ActMemberRow, 'id' | 'created_at'>;
-export type JudgeInsert = Omit<JudgeRow, 'id' | 'created_at'>;
-export type JudgeScoreInsert = Omit<JudgeScoreRow, 'id' | 'created_at' | 'updated_at'>;
-export type TicketInsert = Omit<TicketRow, 'id' | 'created_at'>;
-export type AudienceVoteInsert = Omit<AudienceVoteRow, 'id' | 'created_at'>;
-export type AdminUserInsert = Omit<AdminUserRow, 'created_at' | 'updated_at'>;
-export type EventLogInsert = Omit<EventLogRow, 'id' | 'created_at'>;
+export interface EventInsert {
+  id?: string;
+  name: string;
+  description?: string | null;
+  event_date?: string | null;
+  venue?: string | null;
+  capacity?: number;
+  ticket_price?: number;
+  status?: EventStatus;
+  current_act_id?: string | null;
+  voting_open?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ActInsert {
+  id?: string;
+  act_code: string;
+  category: ActCategory;
+  title: string;
+  performer_name: string;
+  department?: string | null;
+  year?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  photo_url?: string | null;
+  performance_type?: string | null;
+  bio?: string | null;
+  self_rating?: number | null;
+  status?: ActStatus;
+  running_order?: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ActMemberInsert {
+  id?: string;
+  act_id: string;
+  name: string;
+  department?: string | null;
+  year?: string | null;
+  created_at?: string;
+}
+
+export interface JudgeInsert {
+  id?: string;
+  name: string;
+  email?: string | null;
+  judge_code: string;
+  is_anchor?: boolean;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface JudgeScoreInsert {
+  id?: string;
+  act_id: string;
+  judge_id: string;
+  creativity: number;
+  execution: number;
+  stage_presence: number;
+  audience_engagement: number;
+  notes?: string | null;
+  submitted?: boolean;
+  submitted_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TicketInsert {
+  id?: string;
+  ticket_code: string;
+  buyer_name: string;
+  buyer_email: string;
+  buyer_phone?: string | null;
+  quantity?: number;
+  payment_status?: PaymentStatus;
+  payment_reference?: string | null;
+  issued_at?: string | null;
+  created_at?: string;
+}
+
+export interface AudienceVoteInsert {
+  id?: string;
+  ticket_id: string;
+  act_id: string;
+  rating: number;
+  created_at?: string;
+}
+
+export interface AdminUserInsert {
+  id: string;
+  email: string;
+  name: string;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EventLogInsert {
+  id?: string;
+  event_id: string;
+  actor_type: ActorType;
+  actor_id?: string | null;
+  action: EventLogAction;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string;
+}
 
 // ─── Update Types ─────────────────────────────────────────────────────────────
 
@@ -170,8 +269,17 @@ export type JudgeScoreUpdate = Partial<JudgeScoreInsert>;
 export type EventUpdate = Partial<EventInsert>;
 export type AdminUserUpdate = Partial<Omit<AdminUserInsert, 'id'>>;
 
+
 // ─── Supabase Database Shape ──────────────────────────────────────────────────
 // Follows the shape expected by createClient<Database>()
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
 
 export interface Database {
   public: {
@@ -180,50 +288,109 @@ export interface Database {
         Row: EventRow;
         Insert: EventInsert;
         Update: EventUpdate;
+        Relationships: [];
       };
       acts: {
         Row: ActRow;
         Insert: ActInsert;
         Update: ActUpdate;
+        Relationships: [];
       };
       act_members: {
         Row: ActMemberRow;
         Insert: ActMemberInsert;
         Update: Partial<ActMemberInsert>;
+        Relationships: [
+          {
+            foreignKeyName: "act_members_act_id_fkey";
+            columns: ["act_id"];
+            isOneToOne: false;
+            referencedRelation: "acts";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       judges: {
         Row: JudgeRow;
         Insert: JudgeInsert;
         Update: Partial<JudgeInsert>;
+        Relationships: [];
       };
       judge_scores: {
         Row: JudgeScoreRow;
         Insert: JudgeScoreInsert;
         Update: JudgeScoreUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "judge_scores_act_id_fkey";
+            columns: ["act_id"];
+            isOneToOne: false;
+            referencedRelation: "acts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "judge_scores_judge_id_fkey";
+            columns: ["judge_id"];
+            isOneToOne: false;
+            referencedRelation: "judges";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       tickets: {
         Row: TicketRow;
         Insert: TicketInsert;
         Update: Partial<TicketInsert>;
+        Relationships: [];
       };
       audience_votes: {
         Row: AudienceVoteRow;
         Insert: AudienceVoteInsert;
         Update: never;  // votes are immutable once cast
+        Relationships: [
+          {
+            foreignKeyName: "audience_votes_act_id_fkey";
+            columns: ["act_id"];
+            isOneToOne: false;
+            referencedRelation: "acts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "audience_votes_ticket_id_fkey";
+            columns: ["ticket_id"];
+            isOneToOne: false;
+            referencedRelation: "tickets";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       admin_users: {
         Row: AdminUserRow;
         Insert: AdminUserInsert;
         Update: AdminUserUpdate;
+        Relationships: [];
       };
       event_logs: {
         Row: EventLogRow;
         Insert: EventLogInsert;
         Update: never;  // logs are append-only
+        Relationships: [
+          {
+            foreignKeyName: "event_logs_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          }
+        ];
       };
     };
-    Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
     Enums: {
       event_status: EventStatus;
       act_category: ActCategory;
@@ -231,6 +398,9 @@ export interface Database {
       payment_status: PaymentStatus;
       actor_type: ActorType;
       event_log_action: EventLogAction;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
     };
   };
 }

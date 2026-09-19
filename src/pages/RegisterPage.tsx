@@ -211,8 +211,8 @@ export const RegisterPage: React.FC = () => {
       const result = await submitPerformerRegistration(formData);
       setSubmissionResult(result);
       setStep(6); // Success screen
-    } catch (err) {
-      setErrors({ submit: 'An error occurred submitting registration. Please try again.' });
+    } catch (err: any) {
+      setErrors({ submit: err?.message || 'An error occurred submitting registration. Please try again.' });
     } finally {
       setIsSubmitting(false);
     }

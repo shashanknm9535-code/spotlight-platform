@@ -1,4 +1,4 @@
-﻿/**
+/**
  * src/lib/supabase/client.ts
  *
  * Browser-side Supabase client for Spotlight (Vite SPA).
@@ -18,7 +18,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@/types/database';
+import type { Database } from '../../types/database';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, USE_SUPABASE } from './config';
 
 /** True when Supabase credentials are present and VITE_USE_SUPABASE=true */
