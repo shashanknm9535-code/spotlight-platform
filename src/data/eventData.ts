@@ -7,9 +7,11 @@ import type {
   NavItem,
   Act,
   JudgeIdentity,
+  JudgeScore,
   AdminRegistration,
   AdminTicketOrder,
 } from '../types';
+
 
 export const EVENT_INFO = {
   name: 'SPOTLIGHT',
@@ -462,3 +464,165 @@ export const MOCK_ADMIN_TICKETS: AdminTicketOrder[] = [
     createdAt: '2026-09-19T10:30:00.000Z',
   },
 ];
+
+/* Phase 7: Mock Full Act Roster (8 acts — 4 solo, 4 group) */
+// act-01..04 are defined above (Phase 4). These extend the roster for scoring.
+export const MOCK_ACTS_EXTENDED: Act[] = [
+  {
+    id: 'act-05',
+    slotNumber: 5,
+    category: 'group',
+    title: 'Pulse Collective',
+    performerName: 'The Pulse Crew',
+    department: 'Arts & Mass Communication',
+    year: '2nd Year',
+    performanceType: 'Dance',
+    blurb: 'High-energy synchronised hip-hop choreography by a 7-member crew.',
+    photoUrl: 'https://images.unsplash.com/photo-1504609813442-a8924e83f76e?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'act-06',
+    slotNumber: 6,
+    category: 'solo',
+    title: 'Raw Nerve',
+    performerName: 'Divya Menon',
+    department: 'Basic Sciences',
+    year: '3rd Year',
+    performanceType: 'Spoken Word',
+    blurb: 'Spoken-word poetry about identity, science and belonging.',
+    photoUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'act-07',
+    slotNumber: 7,
+    category: 'group',
+    title: 'Neon Mandal',
+    performerName: 'Neon Mandal Ensemble',
+    department: 'Information Technology',
+    year: '4th Year',
+    performanceType: 'Theatre',
+    blurb: 'A surreal theatrical piece blending light art and live music.',
+    photoUrl: 'https://images.unsplash.com/photo-1503095396549-807759245b35?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'act-08',
+    slotNumber: 8,
+    category: 'solo',
+    title: 'Open Chord',
+    performerName: 'Aarav Sharma',
+    department: 'Computer Science & Engineering',
+    year: '2nd Year',
+    performanceType: 'Instrumental',
+    blurb: 'Original fingerstyle guitar compositions performed live without backing track.',
+    photoUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80',
+  },
+];
+
+/* Phase 7: Mock Judge Scores
+   Format: judgeId, actId, creativity(/3), execution(/3), stagePresence(/2), audienceEngagement(/2)
+   Judge-01 is Anchor Judge for tiebreaking purposes.
+   Note: act-05 and act-03 have identical final scores (deliberate tie resolved by audience).
+         act-02 and act-06 have same final score (resolved by anchor judge).
+*/
+
+
+export const MOCK_JUDGE_SCORES: JudgeScore[] = [
+  // ACT-01 (group) — Symphonic Echoes
+  { id: 'js-01-j1', judgeId: 'judge-01', actId: 'act-01', creativity: 3, execution: 3, stagePresence: 2, audienceEngagement: 2, total: 10, submitted: true, createdAt: '2026-09-19T14:10:00Z' },
+  { id: 'js-01-j2', judgeId: 'judge-02', actId: 'act-01', creativity: 3, execution: 2, stagePresence: 2, audienceEngagement: 2, total: 9, submitted: true, createdAt: '2026-09-19T14:11:00Z' },
+  { id: 'js-01-j3', judgeId: 'judge-03', actId: 'act-01', creativity: 2, execution: 3, stagePresence: 2, audienceEngagement: 2, total: 9, submitted: true, createdAt: '2026-09-19T14:12:00Z' },
+
+  // ACT-02 (solo) — Rhythm Rebels
+  { id: 'js-02-j1', judgeId: 'judge-01', actId: 'act-02', creativity: 2, execution: 3, stagePresence: 2, audienceEngagement: 2, total: 9, submitted: true, createdAt: '2026-09-19T14:20:00Z' },
+  { id: 'js-02-j2', judgeId: 'judge-02', actId: 'act-02', creativity: 3, execution: 3, stagePresence: 1, audienceEngagement: 2, total: 9, submitted: true, createdAt: '2026-09-19T14:21:00Z' },
+  { id: 'js-02-j3', judgeId: 'judge-03', actId: 'act-02', creativity: 2, execution: 2, stagePresence: 2, audienceEngagement: 1, total: 7, submitted: true, createdAt: '2026-09-19T14:22:00Z' },
+
+  // ACT-03 (group) — Echoes of Drama
+  { id: 'js-03-j1', judgeId: 'judge-01', actId: 'act-03', creativity: 3, execution: 2, stagePresence: 2, audienceEngagement: 2, total: 9, submitted: true, createdAt: '2026-09-19T14:30:00Z' },
+  { id: 'js-03-j2', judgeId: 'judge-02', actId: 'act-03', creativity: 2, execution: 3, stagePresence: 2, audienceEngagement: 1, total: 8, submitted: true, createdAt: '2026-09-19T14:31:00Z' },
+  { id: 'js-03-j3', judgeId: 'judge-03', actId: 'act-03', creativity: 3, execution: 2, stagePresence: 1, audienceEngagement: 2, total: 8, submitted: true, createdAt: '2026-09-19T14:32:00Z' },
+
+  // ACT-04 (solo) — Acoustic Horizon
+  { id: 'js-04-j1', judgeId: 'judge-01', actId: 'act-04', creativity: 2, execution: 2, stagePresence: 2, audienceEngagement: 1, total: 7, submitted: true, createdAt: '2026-09-19T14:40:00Z' },
+  { id: 'js-04-j2', judgeId: 'judge-02', actId: 'act-04', creativity: 2, execution: 2, stagePresence: 1, audienceEngagement: 2, total: 7, submitted: true, createdAt: '2026-09-19T14:41:00Z' },
+  // judge-03 did NOT submit for act-04 (tests incomplete panel handling)
+
+  // ACT-05 (group) — Pulse Collective (deliberate tie in final score with act-03, higher audience wins)
+  { id: 'js-05-j1', judgeId: 'judge-01', actId: 'act-05', creativity: 3, execution: 2, stagePresence: 2, audienceEngagement: 2, total: 9, submitted: true, createdAt: '2026-09-19T14:50:00Z' },
+  { id: 'js-05-j2', judgeId: 'judge-02', actId: 'act-05', creativity: 2, execution: 3, stagePresence: 2, audienceEngagement: 1, total: 8, submitted: true, createdAt: '2026-09-19T14:51:00Z' },
+  { id: 'js-05-j3', judgeId: 'judge-03', actId: 'act-05', creativity: 3, execution: 2, stagePresence: 1, audienceEngagement: 2, total: 8, submitted: true, createdAt: '2026-09-19T14:52:00Z' },
+
+  // ACT-06 (solo) — Raw Nerve (deliberate tie with act-02, anchor judge score differs)
+  { id: 'js-06-j1', judgeId: 'judge-01', actId: 'act-06', creativity: 2, execution: 3, stagePresence: 1, audienceEngagement: 2, total: 8, submitted: true, createdAt: '2026-09-19T15:00:00Z' },
+  { id: 'js-06-j2', judgeId: 'judge-02', actId: 'act-06', creativity: 3, execution: 2, stagePresence: 2, audienceEngagement: 2, total: 9, submitted: true, createdAt: '2026-09-19T15:01:00Z' },
+  { id: 'js-06-j3', judgeId: 'judge-03', actId: 'act-06', creativity: 2, execution: 2, stagePresence: 2, audienceEngagement: 2, total: 8, submitted: true, createdAt: '2026-09-19T15:02:00Z' },
+
+  // ACT-07 (group) — Neon Mandal
+  { id: 'js-07-j1', judgeId: 'judge-01', actId: 'act-07', creativity: 3, execution: 3, stagePresence: 2, audienceEngagement: 2, total: 10, submitted: true, createdAt: '2026-09-19T15:10:00Z' },
+  { id: 'js-07-j2', judgeId: 'judge-02', actId: 'act-07', creativity: 3, execution: 3, stagePresence: 2, audienceEngagement: 2, total: 10, submitted: true, createdAt: '2026-09-19T15:11:00Z' },
+  { id: 'js-07-j3', judgeId: 'judge-03', actId: 'act-07', creativity: 3, execution: 2, stagePresence: 2, audienceEngagement: 2, total: 9, submitted: true, createdAt: '2026-09-19T15:12:00Z' },
+
+  // ACT-08 (solo) — Open Chord
+  { id: 'js-08-j1', judgeId: 'judge-01', actId: 'act-08', creativity: 1, execution: 2, stagePresence: 1, audienceEngagement: 1, total: 5, submitted: true, createdAt: '2026-09-19T15:20:00Z' },
+  { id: 'js-08-j2', judgeId: 'judge-02', actId: 'act-08', creativity: 2, execution: 1, stagePresence: 1, audienceEngagement: 1, total: 5, submitted: true, createdAt: '2026-09-19T15:21:00Z' },
+  { id: 'js-08-j3', judgeId: 'judge-03', actId: 'act-08', creativity: 1, execution: 2, stagePresence: 1, audienceEngagement: 1, total: 5, submitted: true, createdAt: '2026-09-19T15:22:00Z' },
+];
+
+/* Phase 7: Mock Audience Vote Records
+   Designed so act-03 and act-05 have same final score but act-05 has higher audience → wins tie.
+   act-02 and act-06 have same audience score → anchor judge resolves (judge-01: act-02=9, act-06=8 → act-02 wins).
+*/
+export const MOCK_VOTE_RECORDS = [
+  // ACT-01 (group) — high audience
+  { ticketId: 'SPT-TKT-2026-0001', actId: 'act-01', rating: 9, timestamp: '2026-09-19T14:15:00Z' },
+  { ticketId: 'SPT-TKT-2026-0002', actId: 'act-01', rating: 10, timestamp: '2026-09-19T14:15:30Z' },
+  { ticketId: 'SPT-TKT-2026-0003', actId: 'act-01', rating: 9, timestamp: '2026-09-19T14:16:00Z' },
+  { ticketId: 'SPT-TKT-2026-00482', actId: 'act-01', rating: 8, timestamp: '2026-09-19T14:16:30Z' },
+  { ticketId: 'SPT-TKT-2026-00483', actId: 'act-01', rating: 9, timestamp: '2026-09-19T14:17:00Z' },
+
+  // ACT-02 (solo) — audience avg 7.6
+  { ticketId: 'SPT-TKT-2026-0001', actId: 'act-02', rating: 8, timestamp: '2026-09-19T14:25:00Z' },
+  { ticketId: 'SPT-TKT-2026-0002', actId: 'act-02', rating: 7, timestamp: '2026-09-19T14:25:30Z' },
+  { ticketId: 'SPT-TKT-2026-0003', actId: 'act-02', rating: 8, timestamp: '2026-09-19T14:26:00Z' },
+  { ticketId: 'SPT-TKT-2026-00482', actId: 'act-02', rating: 7, timestamp: '2026-09-19T14:26:30Z' },
+  { ticketId: 'SPT-TKT-2026-00483', actId: 'act-02', rating: 8, timestamp: '2026-09-19T14:27:00Z' },
+
+  // ACT-03 (group) — audience avg 6.6 (tied final with act-05 but loses on audience)
+  { ticketId: 'SPT-TKT-2026-0001', actId: 'act-03', rating: 7, timestamp: '2026-09-19T14:35:00Z' },
+  { ticketId: 'SPT-TKT-2026-0002', actId: 'act-03', rating: 6, timestamp: '2026-09-19T14:35:30Z' },
+  { ticketId: 'SPT-TKT-2026-0003', actId: 'act-03', rating: 7, timestamp: '2026-09-19T14:36:00Z' },
+  { ticketId: 'SPT-TKT-2026-00482', actId: 'act-03', rating: 6, timestamp: '2026-09-19T14:36:30Z' },
+  { ticketId: 'SPT-TKT-2026-00483', actId: 'act-03', rating: 7, timestamp: '2026-09-19T14:37:00Z' },
+
+  // ACT-04 (solo) — audience avg 6.0
+  { ticketId: 'SPT-TKT-2026-0001', actId: 'act-04', rating: 6, timestamp: '2026-09-19T14:45:00Z' },
+  { ticketId: 'SPT-TKT-2026-0002', actId: 'act-04', rating: 6, timestamp: '2026-09-19T14:45:30Z' },
+  { ticketId: 'SPT-TKT-2026-0003', actId: 'act-04', rating: 6, timestamp: '2026-09-19T14:46:00Z' },
+
+  // ACT-05 (group) — audience avg 7.4 (wins tie with act-03)
+  { ticketId: 'SPT-TKT-2026-0001', actId: 'act-05', rating: 8, timestamp: '2026-09-19T14:55:00Z' },
+  { ticketId: 'SPT-TKT-2026-0002', actId: 'act-05', rating: 7, timestamp: '2026-09-19T14:55:30Z' },
+  { ticketId: 'SPT-TKT-2026-0003', actId: 'act-05', rating: 7, timestamp: '2026-09-19T14:56:00Z' },
+  { ticketId: 'SPT-TKT-2026-00482', actId: 'act-05', rating: 8, timestamp: '2026-09-19T14:56:30Z' },
+  { ticketId: 'SPT-TKT-2026-00483', actId: 'act-05', rating: 7, timestamp: '2026-09-19T14:57:00Z' },
+
+  // ACT-06 (solo) — audience avg 7.6 same as act-02, anchor judge resolves
+  { ticketId: 'SPT-TKT-2026-0001', actId: 'act-06', rating: 8, timestamp: '2026-09-19T15:05:00Z' },
+  { ticketId: 'SPT-TKT-2026-0002', actId: 'act-06', rating: 7, timestamp: '2026-09-19T15:05:30Z' },
+  { ticketId: 'SPT-TKT-2026-0003', actId: 'act-06', rating: 8, timestamp: '2026-09-19T15:06:00Z' },
+  { ticketId: 'SPT-TKT-2026-00482', actId: 'act-06', rating: 7, timestamp: '2026-09-19T15:06:30Z' },
+  { ticketId: 'SPT-TKT-2026-00483', actId: 'act-06', rating: 8, timestamp: '2026-09-19T15:07:00Z' },
+
+  // ACT-07 (group) — highest audience
+  { ticketId: 'SPT-TKT-2026-0001', actId: 'act-07', rating: 10, timestamp: '2026-09-19T15:15:00Z' },
+  { ticketId: 'SPT-TKT-2026-0002', actId: 'act-07', rating: 10, timestamp: '2026-09-19T15:15:30Z' },
+  { ticketId: 'SPT-TKT-2026-0003', actId: 'act-07', rating: 9, timestamp: '2026-09-19T15:16:00Z' },
+  { ticketId: 'SPT-TKT-2026-00482', actId: 'act-07', rating: 10, timestamp: '2026-09-19T15:16:30Z' },
+  { ticketId: 'SPT-TKT-2026-00483', actId: 'act-07', rating: 9, timestamp: '2026-09-19T15:17:00Z' },
+
+  // ACT-08 (solo) — low audience
+  { ticketId: 'SPT-TKT-2026-0001', actId: 'act-08', rating: 5, timestamp: '2026-09-19T15:25:00Z' },
+  { ticketId: 'SPT-TKT-2026-0002', actId: 'act-08', rating: 4, timestamp: '2026-09-19T15:25:30Z' },
+  { ticketId: 'SPT-TKT-2026-0003', actId: 'act-08', rating: 5, timestamp: '2026-09-19T15:26:00Z' },
+];
+

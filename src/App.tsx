@@ -8,6 +8,7 @@ import { TicketPage } from './pages/TicketPage';
 import { VotePage } from './pages/VotePage';
 import { JudgePage } from './pages/JudgePage';
 import { AdminPage } from './pages/AdminPage';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 export const App: React.FC = () => {
@@ -23,6 +24,7 @@ export const App: React.FC = () => {
             <Route path="/vote" element={<VotePage />} />
             <Route path="/judge" element={<JudgePage />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/stage" element={<PlaceholderPage />} />
             <Route path="*" element={<PlaceholderPage />} />
           </Routes>
@@ -34,3 +36,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+

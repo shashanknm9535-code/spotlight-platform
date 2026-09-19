@@ -7,6 +7,7 @@ import {
   Ticket,
   Radio,
   Award,
+  BarChart2,
   Tv,
   Shield,
 } from 'lucide-react';
@@ -25,8 +26,10 @@ const NAV_ITEMS: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
   { id: 'tickets', label: 'Tickets', icon: <Ticket className="w-4 h-4" /> },
   { id: 'live', label: 'Live Event', icon: <Radio className="w-4 h-4" /> },
   { id: 'judges', label: 'Judges', icon: <Award className="w-4 h-4" /> },
+  { id: 'results', label: 'Results', icon: <BarChart2 className="w-4 h-4" /> },
   { id: 'stage', label: 'Stage Display', icon: <Tv className="w-4 h-4" /> },
 ];
+
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   activeTab,

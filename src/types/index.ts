@@ -197,6 +197,7 @@ export type AdminTab =
   | 'tickets'
   | 'live'
   | 'judges'
+  | 'results'
   | 'stage';
 
 export type RegistrationStatus = 'pending' | 'confirmed' | 'rejected';
@@ -237,4 +238,49 @@ export interface AdminTicketOrder {
   totalAmount: number;
   status: 'CONFIRMED';
   createdAt: string;
+}
+
+/* Phase 7: Score Aggregation Engine + Live Leaderboard Types */
+
+export type TiebreakerReason = 'audience_score' | 'anchor_judge' | 'manual_review' | null;
+
+export interface JudgeScoreBreakdown {
+  judgeId: string;
+  judgeName: string;
+  creativity: number;
+  execution: number;
+  stagePresence: number;
+  audienceEngagement: number;
+  total: number;
+}
+
+export interface ActResult {
+  actId: string;
+  actTitle: string;
+  performerName: string;
+  category: 'solo' | 'group';
+  performanceType: string;
+  photoUrl: string;
+  selfRating: number;
+  selfRatingGap: number;
+  // Raw inputs
+  judgeBreakdowns: JudgeScoreBreakdown[];
+  audienceVotes: number[];
+  // Calculated
+  panelScore: number;        // avg of submitted judge totals → /10
+  audienceScore: number;     // avg of audience votes → /10
+  finalScore: number;        // panelScore*0.6 + audienceScore*0.4
+  judgesSubmitted: number;
+  totalAudienceVotes: number;
+  // Ranking
+  rank: number;
+  tiebreakerUsed: TiebreakerReason;
+  isManualReview: boolean;
+}
+
+export interface LeaderboardState {
+  soloResults: ActResult[];
+  groupResults: ActResult[];
+  lastCalculatedAt: string;
+  isLive: boolean;
 }
