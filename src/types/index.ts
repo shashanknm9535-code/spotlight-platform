@@ -92,3 +92,34 @@ export interface RegistrationResult {
   status: 'PENDING REVIEW';
   formData: RegistrationFormData;
 }
+
+/* Phase 3: Audience Ticketing Types */
+export type TicketStatus = 'CONFIRMED' | 'PENDING' | 'FAILED';
+
+export interface Ticket {
+  id: string;
+  qrValue: string;
+  buyerName: string;
+  buyerEmail: string;
+  buyerPhone: string;
+  status: TicketStatus;
+  createdAt: string;
+}
+
+export interface TicketOrder {
+  id: string;
+  paymentId: string;
+  tickets: Ticket[];
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  status: TicketStatus;
+  createdAt: string;
+}
+
+export interface BuyerDetails {
+  name: string;
+  email: string;
+  phone: string;
+  quantity: number;
+}
