@@ -1,5 +1,6 @@
 import { MOCK_VALID_TICKETS } from '../data/eventData';
 import type { VoteRecord } from '../types';
+// TODO(Phase 8B): import { supabase, isSupabaseEnabled } from '@/lib/supabase/client';
 
 // In-memory mock vote store
 const voteStore: Record<string, VoteRecord[]> = {};

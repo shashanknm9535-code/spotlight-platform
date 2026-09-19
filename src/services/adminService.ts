@@ -11,6 +11,14 @@ import type {
   LiveEventState,
   AdminTicketOrder,
 } from '../types';
+// TODO(Phase 8B): import { supabase, isSupabaseEnabled } from '@/lib/supabase/client';
+//
+// Phase 8B Integration Paths:
+//   getAdminRegistrations: supabase.from('acts').select('*, act_members(*)').eq('event_id', ...)
+//   updateRegistrationStatus: supabase.from('acts').update({ status }).eq('id', id)
+//   updateLiveEventState: supabase.from('events').update({ current_act_id, voting_open }).eq('id', eventId)
+//   Audit all state changes via: supabase.from('event_logs').insert({ action, actor_type, metadata })
+
 
 // In-memory mock state stores
 let registrationsStore: AdminRegistration[] = [...MOCK_ADMIN_REGISTRATIONS];

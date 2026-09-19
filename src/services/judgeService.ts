@@ -1,5 +1,17 @@
 import { MOCK_JUDGES } from '../data/eventData';
 import type { JudgeIdentity, JudgeScore } from '../types';
+// TODO(Phase 8B): import { supabase, isSupabaseEnabled } from '@/lib/supabase/client';
+//
+// Phase 8B Integration Path:
+//   authenticateJudgeCode:
+//     const { data } = await supabase.from('judges').select('*').eq('judge_code', code).single();
+//
+//   submitJudgeScore:
+//     await supabase.from('judge_scores').upsert({
+//       act_id, judge_id, creativity, execution, stage_presence, audience_engagement,
+//       notes, submitted: true, submitted_at: new Date().toISOString()
+//     }, { onConflict: 'judge_id,act_id' });
+//     // Note: 'total' is NOT stored — calculated by scoreService
 
 // In-memory mock judge score store
 const judgeScoresStore: Record<string, JudgeScore> = {};

@@ -1,4 +1,5 @@
 import type { BuyerDetails, TicketOrder, Ticket } from '../types';
+// TODO(Phase 8B): import { supabase, isSupabaseEnabled } from '@/lib/supabase/client';
 
 const TICKET_PRICE = 10;
 
@@ -6,7 +7,21 @@ const TICKET_PRICE = 10;
  * Mock payment & ticket issuance service for Phase 3.
  * Simulates async payment gateway processing (1200ms delay)
  * and returns a generated TicketOrder object with unique ticket IDs & QR strings.
- * Ready for future Razorpay + Supabase integration.
+ *
+ * Phase 8B Integration Path (Razorpay + Supabase — Phase 8C):
+ *   1. Create Razorpay order → get order_id
+ *   2. Confirm payment client-side
+ *   3. Server-side verify signature
+ *   4. supabase.from('tickets').insert({ ticket_code, buyer_name, payment_status: 'PAID', ... })
+ *   5. Return ticket codes for QR generation
+ *
+ * Phase 8B (ticket validation):
+ *   const { data } = await supabase
+ *     .from('tickets')
+ *     .select('id, ticket_code, payment_status')
+ *     .eq('ticket_code', ticketId)
+ *     .eq('payment_status', 'PAID')
+ *     .single();
  */
 export const processMockPaymentAndCreateTickets = async (
   buyer: BuyerDetails,
