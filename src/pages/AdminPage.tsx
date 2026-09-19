@@ -52,7 +52,7 @@ export const AdminPage: React.FC = () => {
   const [runningOrder, setRunningOrder] = useState<Act[]>([]);
   const [liveState, setLiveState] = useState<LiveEventState>({
     eventStatus: 'live',
-    currentActId: 'act-01',
+    currentActId: '',
     votingOpen: true,
     votingTimeRemaining: 45,
     totalVotesReceived: 0,

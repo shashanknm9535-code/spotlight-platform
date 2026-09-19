@@ -1,6 +1,6 @@
 import { MOCK_JUDGES } from '../data/eventData';
 import type { JudgeIdentity, JudgeScore } from '../types';
-import { supabase, isSupabaseEnabled } from '../lib/supabase/client';
+import { supabase, isSupabaseEnabled, isUuid, logSupabaseError } from '../lib/supabase/client';
 import type { DbJudge, DbJudgeScore } from '../types/database';
 
 // In-memory mock judge score store
@@ -28,10 +28,11 @@ export const authenticateJudgeCode = async (
       judge_code_input: normalized,
     });
 
-    if (error || !data) {
-      console.warn('[JudgeService] authenticateJudgeCode RPC error:', error);
+    if (error) {
+      logSupabaseError('JudgeService', 'authenticateJudgeCode', error);
       return null;
     }
+    if (!data) return null;
 
     const payload = data as any;
     return {
@@ -42,7 +43,7 @@ export const authenticateJudgeCode = async (
       role: payload.isAnchor ? 'Anchor Judge & Tiebreaker' : 'Panel Judge',
     };
   } catch (err) {
-    console.error('[JudgeService] Error authenticating judge code:', err);
+    logSupabaseError('JudgeService', 'authenticateJudgeCode', err);
     return null;
   }
 };
@@ -50,6 +51,7 @@ export const authenticateJudgeCode = async (
 /**
  * Retrieves the submitted or draft score record for a specific judge and act.
  * Enforces JUDGE ISOLATION: A judge code can ONLY access their own score sheet!
+ * Skips calling RPC if actId is a mock ID (not a UUID) to prevent HTTP 400 errors.
  */
 export const getJudgeScoreForAct = async (
   judgeIdOrCode: string,
@@ -63,13 +65,21 @@ export const getJudgeScoreForAct = async (
   }
 
   // ── SUPABASE LIVE PERSISTENCE ───────────────────────────────────────────────
+  if (!isUuid(actId)) {
+    return judgeScoresStore[key] || null;
+  }
+
   try {
     const { data, error } = await (supabase as any).rpc('get_judge_score_for_act', {
       judge_code_input: judgeIdOrCode,
       act_id_input: actId,
     });
 
-    if (error || !data) {
+    if (error) {
+      logSupabaseError('JudgeService', 'getJudgeScoreForAct', error);
+      return judgeScoresStore[key] || null;
+    }
+    if (!data) {
       return null;
     }
 
@@ -92,7 +102,7 @@ export const getJudgeScoreForAct = async (
     judgeScoresStore[key] = scoreRecord;
     return scoreRecord;
   } catch (err) {
-    console.error('[JudgeService] Error in getJudgeScoreForAct:', err);
+    logSupabaseError('JudgeService', 'getJudgeScoreForAct', err);
     return judgeScoresStore[key] || null;
   }
 };
@@ -148,6 +158,10 @@ export const submitJudgeScore = async (
   }
 
   // ── SUPABASE LIVE PERSISTENCE VIA SECURE RPC ────────────────────────────────
+  if (!isUuid(scoreData.actId)) {
+    throw new Error('No valid performance act selected for judging.');
+  }
+
   try {
     const { data, error } = await (supabase as any).rpc('submit_judge_score', {
       judge_code_input: judgeIdentifier,
@@ -160,6 +174,7 @@ export const submitJudgeScore = async (
     });
 
     if (error) {
+      logSupabaseError('JudgeService', 'submit_judge_score', error);
       const msg = error.message || '';
       if (msg.includes('SCORE_LOCKED')) {
         throw new Error('This score has already been submitted and locked.');
@@ -176,7 +191,6 @@ export const submitJudgeScore = async (
       if (msg.includes('INVALID_SCORE')) {
         throw new Error('Please check the score values and try again.');
       }
-      console.error('[JudgeService] submit_judge_score RPC error:', error);
       throw new Error("We couldn't submit your score. Please try again.");
     }
 
@@ -198,7 +212,10 @@ export const submitJudgeScore = async (
     judgeScoresStore[key] = scoreRecord;
     return scoreRecord;
   } catch (err: any) {
-    console.error('[JudgeService] Submission error:', err);
+    if (err?.message && !err?.code) {
+      throw err;
+    }
+    logSupabaseError('JudgeService', 'submitJudgeScore', err);
     throw new Error(err?.message || "We couldn't submit your score. Please try again.");
   }
 };

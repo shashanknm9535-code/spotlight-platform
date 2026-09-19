@@ -1,5 +1,5 @@
 import type { BuyerDetails, TicketOrder, Ticket } from '../types';
-import { supabase, isSupabaseEnabled } from '../lib/supabase/client';
+import { supabase, isSupabaseEnabled, logSupabaseError } from '../lib/supabase/client';
 import type { DbTicket, TicketInsert } from '../types/database';
 
 export const TICKET_PRICE = 10;
@@ -28,10 +28,14 @@ export const getTicketsIssuedCount = async (): Promise<number> => {
       .select('quantity')
       .eq('payment_status', 'PAID') as any);
 
-    if (error || !data) return 0;
+    if (error) {
+      logSupabaseError('TicketService', 'getTicketsIssuedCount', error);
+      return 0;
+    }
+    if (!data) return 0;
     return (data as { quantity: number }[]).reduce((sum, row) => sum + (row.quantity || 1), 0);
   } catch (err) {
-    console.error('[TicketService] Error fetching issued ticket count:', err);
+    logSupabaseError('TicketService', 'getTicketsIssuedCount', err);
     return 0;
   }
 };
@@ -105,7 +109,7 @@ const createSingleTicketRecord = async (
       continue;
     }
 
-    console.error('[TicketService] Failed to insert ticket record:', error);
+    logSupabaseError('TicketService', 'createSingleTicketRecord', error);
     lastError = error;
     break;
   }
@@ -177,6 +181,7 @@ export const processMockPaymentAndCreateTickets = async (
     });
 
     if (error || !data || !data.success) {
+      logSupabaseError('TicketService', 'purchase_tickets_atomic', error);
       const errMsg = error?.hint || error?.message || 'Ticket creation failed.';
       if (errMsg.includes('CAPACITY_EXCEEDED')) {
         throw new Error('Tickets are currently sold out or remaining capacity is insufficient.');
@@ -212,7 +217,10 @@ export const processMockPaymentAndCreateTickets = async (
       createdAt: new Date().toISOString(),
     };
   } catch (err: any) {
-    console.error('[TicketService] Atomic purchase error:', err);
+    if (err?.message && !err?.code) {
+      throw err;
+    }
+    logSupabaseError('TicketService', 'processMockPaymentAndCreateTickets', err);
     throw new Error(err?.message || "We couldn't issue your tickets. Please try again.");
   }
 };
@@ -243,7 +251,11 @@ export const getTicket = async (ticketCode: string): Promise<Ticket | null> => {
       .eq('payment_status', 'PAID')
       .maybeSingle();
 
-    if (error || !data) return null;
+    if (error) {
+      logSupabaseError('TicketService', 'getTicket', error);
+      return null;
+    }
+    if (!data) return null;
 
     const row = data as DbTicket;
     return {
@@ -256,7 +268,7 @@ export const getTicket = async (ticketCode: string): Promise<Ticket | null> => {
       createdAt: row.created_at,
     };
   } catch (err) {
-    console.error('[TicketService] Error in getTicket:', err);
+    logSupabaseError('TicketService', 'getTicket', err);
     return null;
   }
 };

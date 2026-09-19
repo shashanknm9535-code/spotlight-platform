@@ -6,7 +6,7 @@
  * judge identity association, and role checks.
  */
 
-import { supabase, isSupabaseEnabled } from '../lib/supabase/client';
+import { supabase, isSupabaseEnabled, logSupabaseError } from '../lib/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 import type { JudgeIdentity } from '../types';
 
@@ -36,11 +36,13 @@ export const signInWithEmailPassword = async (
     });
 
     if (error) {
+      logSupabaseError('AuthService', 'signInWithEmailPassword', error);
       return { user: null, session: null, error: error.message };
     }
 
     return { user: data.user, session: data.session, error: null };
   } catch (err: any) {
+    logSupabaseError('AuthService', 'signInWithEmailPassword', err);
     return { user: null, session: null, error: err?.message || 'Authentication failed.' };
   }
 };
@@ -51,10 +53,14 @@ export const signInWithEmailPassword = async (
 export const signOutSession = async (): Promise<boolean> => {
   if (!isSupabaseEnabled || !supabase) return true;
   try {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      logSupabaseError('AuthService', 'signOutSession', error);
+      return false;
+    }
     return true;
   } catch (err) {
-    console.error('[AuthService] Error signing out:', err);
+    logSupabaseError('AuthService', 'signOutSession', err);
     return false;
   }
 };
@@ -65,16 +71,21 @@ export const signOutSession = async (): Promise<boolean> => {
 export const getCurrentSession = async (): Promise<Session | null> => {
   if (!isSupabaseEnabled || !supabase) return null;
   try {
-    const { data } = await supabase.auth.getSession();
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      logSupabaseError('AuthService', 'getCurrentSession', error);
+      return null;
+    }
     return data.session;
   } catch (err) {
-    console.error('[AuthService] Error getting session:', err);
+    logSupabaseError('AuthService', 'getCurrentSession', err);
     return null;
   }
 };
 
 /**
  * Verify if the authenticated user is an active admin in admin_users table.
+ * Uses maybeSingle to avoid 406 / PGRST116 error when 0 rows match.
  */
 export const checkIsActiveAdmin = async (userId: string): Promise<boolean> => {
   if (!isSupabaseEnabled || !supabase || !userId) return false;
@@ -83,12 +94,16 @@ export const checkIsActiveAdmin = async (userId: string): Promise<boolean> => {
       .from('admin_users')
       .select('is_active')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) return false;
+    if (error) {
+      logSupabaseError('AuthService', 'checkIsActiveAdmin', error);
+      return false;
+    }
+    if (!data) return false;
     return (data as any).is_active === true;
   } catch (err) {
-    console.error('[AuthService] Error verifying active admin:', err);
+    logSupabaseError('AuthService', 'checkIsActiveAdmin', err);
     return false;
   }
 };
@@ -96,6 +111,7 @@ export const checkIsActiveAdmin = async (userId: string): Promise<boolean> => {
 /**
  * Verify if the authenticated user is an active judge in judges table.
  * If found, returns mapped JudgeIdentity.
+ * Uses maybeSingle to avoid 406 / PGRST116 error when 0 rows match.
  */
 export const checkIsActiveJudge = async (userId: string): Promise<JudgeIdentity | null> => {
   if (!isSupabaseEnabled || !supabase || !userId) return null;
@@ -105,9 +121,13 @@ export const checkIsActiveJudge = async (userId: string): Promise<JudgeIdentity 
       .select('*')
       .eq('auth_user_id', userId)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) return null;
+    if (error) {
+      logSupabaseError('AuthService', 'checkIsActiveJudge', error);
+      return null;
+    }
+    if (!data) return null;
     const payload = data as any;
 
     return {
@@ -118,7 +138,7 @@ export const checkIsActiveJudge = async (userId: string): Promise<JudgeIdentity 
       role: payload.is_anchor ? 'Anchor Judge & Tiebreaker' : 'Panel Judge',
     };
   } catch (err) {
-    console.error('[AuthService] Error checking active judge:', err);
+    logSupabaseError('AuthService', 'checkIsActiveJudge', err);
     return null;
   }
 };

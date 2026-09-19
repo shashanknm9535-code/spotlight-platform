@@ -14,6 +14,7 @@ import {
   checkIsActiveJudge,
   subscribeToAuthChanges,
 } from '../services/authService';
+import { getRunningOrder } from '../services/adminService';
 import { isSupabaseEnabled } from '../lib/supabase/client';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Badge } from '../components/ui/Badge';
@@ -44,10 +45,12 @@ export const JudgePage: React.FC = () => {
   const [submittedScore, setSubmittedScore] = useState<JudgeScore | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [approvedActs, setApprovedActs] = useState<Act[]>([]);
 
-  const currentAct: Act = MOCK_ACTS[activeActIndex] || MOCK_ACTS[0];
+  const actsList = approvedActs.length > 0 ? approvedActs : MOCK_ACTS;
+  const currentAct: Act = actsList[activeActIndex] || actsList[0] || MOCK_ACTS[0];
 
-  // Initial Auth Check for Supabase
+  // Initial Auth Check & Data Load for Supabase
   useEffect(() => {
     if (!isSupabaseEnabled) return;
 
@@ -61,7 +64,19 @@ export const JudgePage: React.FC = () => {
       }
     };
 
+    const loadActs = async () => {
+      try {
+        const list = await getRunningOrder();
+        if (list && list.length > 0) {
+          setApprovedActs(list);
+        }
+      } catch (err) {
+        console.warn('[JudgePage] Could not load running order acts:', err);
+      }
+    };
+
     checkInitialSession();
+    loadActs();
 
     const unsubscribe = subscribeToAuthChanges(async (session) => {
       if (session?.user) {
@@ -99,7 +114,7 @@ export const JudgePage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [judge, activeActIndex]);
+  }, [judge, activeActIndex, currentAct.id]);
 
   // Handle Judge Authentication
   const handleAuthenticate = async (codeToUse?: string) => {
@@ -181,7 +196,7 @@ export const JudgePage: React.FC = () => {
   };
 
   const handleNextAct = () => {
-    const nextIdx = (activeActIndex + 1) % MOCK_ACTS.length;
+    const nextIdx = (activeActIndex + 1) % actsList.length;
     setActiveActIndex(nextIdx);
     // Reset Rubric Slates
     setCreativity(3);
@@ -192,7 +207,7 @@ export const JudgePage: React.FC = () => {
   };
 
   const handlePrevAct = () => {
-    const prevIdx = (activeActIndex - 1 + MOCK_ACTS.length) % MOCK_ACTS.length;
+    const prevIdx = (activeActIndex - 1 + actsList.length) % actsList.length;
     setActiveActIndex(prevIdx);
   };
 

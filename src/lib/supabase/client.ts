@@ -40,3 +40,32 @@ export const supabase: SupabaseClient<Database> | null = USE_SUPABASE
   : null;
 
 export type { Database };
+
+/**
+ * Validates if a string is a valid UUID format (8-4-4-4-12 hex).
+ */
+export const isUuid = (val: string | null | undefined): boolean => {
+  if (!val || typeof val !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+};
+
+/**
+ * Standardized log function for production Supabase errors.
+ * Formats service name, function name, error code, message, details, and hint.
+ */
+export const logSupabaseError = (
+  serviceName: string,
+  functionName: string,
+  error: any
+): void => {
+  if (!error || !USE_SUPABASE) return;
+  console.error(`[${serviceName}] Supabase Error in ${functionName}:`, {
+    service: serviceName,
+    function: functionName,
+    code: error.code || error.status || 'UNKNOWN',
+    message: error.message || String(error),
+    details: error.details || null,
+    hint: error.hint || null,
+  });
+};
+

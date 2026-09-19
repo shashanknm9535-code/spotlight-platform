@@ -1,6 +1,6 @@
 import { MOCK_VALID_TICKETS, MOCK_ACTS } from '../data/eventData';
 import type { VoteRecord, Act } from '../types';
-import { supabase, isSupabaseEnabled } from '../lib/supabase/client';
+import { supabase, isSupabaseEnabled, logSupabaseError } from '../lib/supabase/client';
 import { validateTicketForVoting } from './ticketService';
 
 // In-memory vote store for mock mode & local session caching
@@ -13,6 +13,22 @@ export interface VotingStatePayload {
   hasVoted: boolean;
   votedRating: number | null;
 }
+
+/**
+ * Maps raw RPC current_act object (snake_case) to Act type (camelCase).
+ */
+const mapRpcActToAct = (rpcAct: any): Act => ({
+  id: rpcAct.id,
+  slotNumber: rpcAct.slot_number ?? rpcAct.slotNumber ?? 1,
+  category: rpcAct.category === 'group' || rpcAct.category === 'GROUP' ? 'group' : 'solo',
+  title: rpcAct.title || 'Performance',
+  performerName: rpcAct.performer_name || rpcAct.performerName || 'Performer',
+  department: rpcAct.department || 'N/A',
+  year: rpcAct.year || 'N/A',
+  performanceType: rpcAct.performance_type || rpcAct.performanceType || rpcAct.title || 'Performance',
+  blurb: rpcAct.blurb || rpcAct.bio || '',
+  photoUrl: rpcAct.photo_url || rpcAct.photoUrl || '',
+});
 
 /**
  * Validates a ticket ID/code for audience voting.
@@ -63,31 +79,42 @@ export const getCurrentVotingState = async (
       ticket_code_input: ticketCode?.trim().toUpperCase() || null,
     });
 
-    if (error || !data) {
-      console.error('[VotingService] get_current_voting_state RPC error:', error);
+    if (error) {
+      logSupabaseError('VotingService', 'get_current_voting_state', error);
       return {
-        eventStatus: 'LIVE',
-        votingOpen: true,
-        currentAct: MOCK_ACTS[0],
+        eventStatus: 'DRAFT',
+        votingOpen: false,
+        currentAct: null,
+        hasVoted: false,
+        votedRating: null,
+      };
+    }
+    if (!data) {
+      return {
+        eventStatus: 'DRAFT',
+        votingOpen: false,
+        currentAct: null,
         hasVoted: false,
         votedRating: null,
       };
     }
 
     const payload = data as any;
+    const mappedAct = payload.current_act ? mapRpcActToAct(payload.current_act) : null;
+
     return {
-      eventStatus: payload.event_status || 'LIVE',
-      votingOpen: payload.voting_open ?? true,
-      currentAct: payload.current_act ? (payload.current_act as Act) : MOCK_ACTS[0],
+      eventStatus: payload.event_status || 'DRAFT',
+      votingOpen: payload.voting_open ?? false,
+      currentAct: mappedAct,
       hasVoted: payload.has_voted ?? false,
       votedRating: payload.voted_rating ?? null,
     };
   } catch (err) {
-    console.error('[VotingService] Error fetching current voting state:', err);
+    logSupabaseError('VotingService', 'getCurrentVotingState', err);
     return {
-      eventStatus: 'LIVE',
-      votingOpen: true,
-      currentAct: MOCK_ACTS[0],
+      eventStatus: 'DRAFT',
+      votingOpen: false,
+      currentAct: null,
       hasVoted: false,
       votedRating: null,
     };
@@ -141,6 +168,7 @@ export const submitAudienceVote = async (
     });
 
     if (error) {
+      logSupabaseError('VotingService', 'submit_audience_vote', error);
       const msg = error.message || '';
       if (msg.includes('ALREADY_VOTED') || error.code === '23505') {
         throw new Error('You have already voted for this act.');
@@ -157,7 +185,6 @@ export const submitAudienceVote = async (
       if (msg.includes('INVALID_RATING')) {
         throw new Error('Please select a rating from 1 to 10.');
       }
-      console.error('[VotingService] submit_audience_vote RPC error:', error);
       throw new Error("We couldn't submit your vote. Please try again.");
     }
 
@@ -177,7 +204,10 @@ export const submitAudienceVote = async (
 
     return true;
   } catch (err: any) {
-    console.error('[VotingService] Submission error:', err);
+    if (err?.message && !err?.code) {
+      throw err;
+    }
+    logSupabaseError('VotingService', 'submitAudienceVote', err);
     throw new Error(err?.message || "We couldn't submit your vote. Please try again.");
   }
 };
