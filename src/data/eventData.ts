@@ -1,4 +1,4 @@
-import type { EventStat, ParticipantType, StepFlow, ScoringSystem, CompetitionTrack, NavItem } from '../types';
+import type { EventStat, ParticipantType, StepFlow, ScoringSystem, CompetitionTrack, NavItem, Act } from '../types';
 
 export const EVENT_INFO = {
   name: 'SPOTLIGHT',
@@ -221,3 +221,63 @@ export const SELF_RATING_QUALIFIERS: Record<number, string> = {
   9: 'SHOWSTOPPER',
   10: 'GRAND CHAMPION LEVEL',
 };
+
+/* Phase 4: Mock Live Acts & Valid Tickets */
+export const MOCK_ACTS: Act[] = [
+  {
+    id: 'act-01',
+    slotNumber: 1,
+    category: 'group',
+    title: 'Symphonic Echoes',
+    performerName: 'Karan Mehta & The Resonance Crew',
+    department: 'Music & Sound Arts',
+    year: '3rd Year',
+    performanceType: 'Music & Live Band',
+    blurb: 'A 5-piece fusion ensemble blending classical Indian ragas with modern progressive rock dynamics.',
+    photoUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'act-02',
+    slotNumber: 2,
+    category: 'solo',
+    title: 'Rhythm Rebels',
+    performerName: 'Ananya Sharma',
+    department: 'Electronics Engineering',
+    year: '4th Year',
+    performanceType: 'Contemporary Solo Dance',
+    blurb: 'High-voltage acrobatic dance piece exploring the collision of technology and human emotion.',
+    photoUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'act-03',
+    slotNumber: 3,
+    category: 'group',
+    title: 'Echoes of Drama',
+    performerName: 'The Natya Theatre Guild',
+    department: 'Arts & Mass Communication',
+    year: '2nd Year',
+    performanceType: 'Street Play & Musical Theatre',
+    blurb: 'A punchy satire addressing digital obsession and artificial intelligence in college life.',
+    photoUrl: 'https://images.unsplash.com/photo-1469488865564-c2de10f69f96?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'act-04',
+    slotNumber: 4,
+    category: 'solo',
+    title: 'Acoustic Horizon',
+    performerName: 'Rohan Deshmukh',
+    department: 'Computer Science',
+    year: '1st Year',
+    performanceType: 'Vocal Solo & Fingerstyle Guitar',
+    blurb: 'Soulful acoustic medley featuring original compositions and vocal loops.',
+    photoUrl: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=800&q=80',
+  },
+];
+
+export const MOCK_VALID_TICKETS = [
+  'SPT-TKT-2026-0001',
+  'SPT-TKT-2026-0002',
+  'SPT-TKT-2026-0003',
+  'SPT-TKT-2026-00482',
+  'SPT-TKT-2026-00483',
+];

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { Ticket } from '../../types';
 import { QRCodeDisplay } from './QRCodeDisplay';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { Download, Sparkles, CheckCircle2, Ticket as TicketIcon } from 'lucide-react';
+import { Download, Sparkles, CheckCircle2, Ticket as TicketIcon, Radio } from 'lucide-react';
 
 export interface TicketCardProps {
   ticket: Ticket;
@@ -91,10 +92,13 @@ export const TicketCard: React.FC<TicketCardProps> = ({
 
         {/* FOOTER ACTIONS */}
         <div className="pt-4 border-t border-[#1C1C2A] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-zinc-400">
-          <div className="flex items-center space-x-2 text-emerald-400">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Valid for Live Auditorium Entry & Mobile Voting</span>
-          </div>
+          <Link
+            to="/vote"
+            className="inline-flex items-center space-x-1.5 text-amber-400 hover:text-yellow-300 font-bold uppercase transition-colors"
+          >
+            <Radio className="w-4 h-4 animate-pulse" />
+            <span>Open Live Voting Portal</span>
+          </Link>
 
           <Button
             type="button"

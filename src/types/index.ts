@@ -123,3 +123,36 @@ export interface BuyerDetails {
   phone: string;
   quantity: number;
 }
+
+/* Phase 4: Live Audience Voting Types */
+export type VotingState =
+  | 'ticket_required'
+  | 'scanning'
+  | 'validating'
+  | 'ticket_invalid'
+  | 'waiting'
+  | 'voting_open'
+  | 'submitting'
+  | 'voted'
+  | 'already_voted'
+  | 'voting_closed';
+
+export interface Act {
+  id: string;
+  slotNumber: number;
+  category: 'solo' | 'group';
+  title: string;
+  performerName: string;
+  department: string;
+  year: string;
+  performanceType: string;
+  blurb: string;
+  photoUrl: string;
+}
+
+export interface VoteRecord {
+  ticketId: string;
+  actId: string;
+  rating: number;
+  timestamp: string;
+}

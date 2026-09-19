@@ -5,6 +5,7 @@ import { Footer } from './components/layout/Footer';
 import { HomePage } from './pages/HomePage';
 import { RegisterPage } from './pages/RegisterPage';
 import { TicketPage } from './pages/TicketPage';
+import { VotePage } from './pages/VotePage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 export const App: React.FC = () => {
@@ -17,7 +18,7 @@ export const App: React.FC = () => {
             <Route path="/" element={<HomePage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/ticket" element={<TicketPage />} />
-            <Route path="/vote" element={<PlaceholderPage />} />
+            <Route path="/vote" element={<VotePage />} />
             <Route path="/judge" element={<PlaceholderPage />} />
             <Route path="/admin" element={<PlaceholderPage />} />
             <Route path="/stage" element={<PlaceholderPage />} />
