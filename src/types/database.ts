@@ -389,7 +389,19 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      submit_audience_vote: {
+        Args: {
+          ticket_code_input: string;
+          rating_input: number;
+        };
+        Returns: Json;
+      };
+      get_current_voting_state: {
+        Args: {
+          ticket_code_input?: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       event_status: EventStatus;

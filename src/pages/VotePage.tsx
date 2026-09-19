@@ -7,6 +7,7 @@ import {
   hasVotedForAct,
   getVotedRating,
   resetMockVotes,
+  getCurrentVotingState,
 } from '../services/votingService';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Badge } from '../components/ui/Badge';
@@ -39,21 +40,40 @@ export const VotePage: React.FC = () => {
   const [isVotingOpen, setIsVotingOpen] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
+  const [liveAct, setLiveAct] = useState<Act | null>(null);
 
-  const currentAct: Act = MOCK_ACTS[activeActIndex] || MOCK_ACTS[0];
+  const currentAct: Act = liveAct || MOCK_ACTS[activeActIndex] || MOCK_ACTS[0];
 
-  // Check if ticket already voted when act or ticket changes
+  // Fetch live voting state when ticket or act index changes
   useEffect(() => {
-    if (!activeTicket) return;
-    const voted = hasVotedForAct(activeTicket, currentAct.id);
-    if (voted) {
-      setVotingState('already_voted');
-    } else if (!isVotingOpen) {
-      setVotingState('voting_closed');
-    } else if (votingState !== 'submitting' && votingState !== 'voted') {
-      setVotingState('voting_open');
-    }
-  }, [activeTicket, activeActIndex, isVotingOpen]);
+    let isMounted = true;
+    const fetchState = async () => {
+      try {
+        const payload = await getCurrentVotingState(activeTicket || undefined);
+        if (!isMounted) return;
+        if (payload.currentAct) {
+          setLiveAct(payload.currentAct);
+        }
+        setIsVotingOpen(payload.votingOpen);
+
+        if (activeTicket) {
+          if (payload.hasVoted) {
+            setVotingState('already_voted');
+          } else if (!payload.votingOpen) {
+            setVotingState('voting_closed');
+          } else if (votingState !== 'submitting' && votingState !== 'voted') {
+            setVotingState('voting_open');
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching voting state:', err);
+      }
+    };
+    fetchState();
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTicket, activeActIndex]);
 
   // Handle Ticket Validation
   const handleValidateTicket = async (idToValidate: string) => {
@@ -66,10 +86,13 @@ export const VotePage: React.FC = () => {
       if (isValid) {
         const normalized = idToValidate.trim().toUpperCase();
         setActiveTicket(normalized);
-        const alreadyVoted = hasVotedForAct(normalized, currentAct.id);
-        if (alreadyVoted) {
+        const payload = await getCurrentVotingState(normalized);
+        if (payload.currentAct) {
+          setLiveAct(payload.currentAct);
+        }
+        if (payload.hasVoted || hasVotedForAct(normalized, payload.currentAct?.id || currentAct.id)) {
           setVotingState('already_voted');
-        } else if (!isVotingOpen) {
+        } else if (!payload.votingOpen) {
           setVotingState('voting_closed');
         } else {
           setVotingState('voting_open');
@@ -78,6 +101,7 @@ export const VotePage: React.FC = () => {
         setVotingState('ticket_invalid');
       }
     } catch (err: any) {
+      setErrorMessage(err?.message || 'Ticket verification failed.');
       setVotingState('ticket_invalid');
     }
   };
@@ -96,10 +120,18 @@ export const VotePage: React.FC = () => {
       await submitAudienceVote(activeTicket, currentAct.id, selectedRating);
       setVotingState('voted');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to submit vote.');
-      setVotingState('already_voted');
+      const msg = err?.message || 'Failed to submit vote.';
+      setErrorMessage(msg);
+      if (msg.toLowerCase().includes('already voted')) {
+        setVotingState('already_voted');
+      } else if (msg.toLowerCase().includes('closed')) {
+        setVotingState('voting_closed');
+      } else {
+        setVotingState('voting_open');
+      }
     }
   };
+
 
   // Dev harness callbacks
   const handleDevValidTicket = () => {
