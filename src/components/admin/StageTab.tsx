@@ -5,7 +5,7 @@ import { Button } from '../ui/Button';
 import { Tv, Eye, EyeOff, FastForward, Rewind, Sparkles, User, Users } from 'lucide-react';
 
 export interface StageTabProps {
-  currentAct: Act;
+  currentAct?: Act | null;
   onNextAct: () => void;
   onPrevAct: () => void;
 }
@@ -67,12 +67,12 @@ export const StageTab: React.FC<StageTabProps> = ({
           </Badge>
         </div>
 
-        {displayVisible ? (
+        {displayVisible && currentAct ? (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center py-6">
             {/* PERFORMER STAGE PHOTO */}
             <div className="md:col-span-4 flex justify-center">
               <div className="w-48 h-48 sm:w-56 sm:h-56 bg-[#141420] border-4 border-amber-400 shadow-[0_0_40px_rgba(250,204,21,0.3)] overflow-hidden">
-                <img src={currentAct.photoUrl} alt={currentAct.title} className="w-full h-full object-cover" />
+                <img src={currentAct.photoUrl || ''} alt={currentAct.title} className="w-full h-full object-cover" />
               </div>
             </div>
 
@@ -81,7 +81,7 @@ export const StageTab: React.FC<StageTabProps> = ({
               <div className="inline-flex items-center space-x-2">
                 <Badge variant="gold">ACT #{currentAct.slotNumber.toString().padStart(2, '0')}</Badge>
                 <Badge variant="dark" icon={currentAct.category === 'group' ? <Users className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}>
-                  {currentAct.category.toUpperCase()} ACT
+                  {(currentAct.category || 'solo').toUpperCase()} ACT
                 </Badge>
               </div>
 
@@ -105,6 +105,12 @@ export const StageTab: React.FC<StageTabProps> = ({
                 "{currentAct.blurb}"
               </p>
             </div>
+          </div>
+        ) : displayVisible && !currentAct ? (
+          <div className="py-20 text-center space-y-3 font-mono text-zinc-500">
+            <Tv className="w-12 h-12 mx-auto text-amber-400/60" />
+            <p className="text-sm uppercase font-bold text-zinc-300">NO ACT CURRENTLY ACTIVE ON STAGE</p>
+            <p className="text-xs">Set an act live from the Running Order tab to project feed onto mainstage.</p>
           </div>
         ) : (
           <div className="py-20 text-center space-y-3 font-mono text-zinc-500">

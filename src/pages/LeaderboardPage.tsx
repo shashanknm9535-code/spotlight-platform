@@ -1,56 +1,39 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { LeaderboardRow } from '../components/leaderboard/LeaderboardRow';
 import { ActResultDetailModal } from '../components/leaderboard/ActResultDetailModal';
-import { calculateLeaderboard } from '../services/scoreService';
-import {
-  MOCK_ACTS,
-  MOCK_ACTS_EXTENDED,
-  MOCK_JUDGE_SCORES,
-  MOCK_VOTE_RECORDS,
-  MOCK_JUDGES,
-  MOCK_ADMIN_REGISTRATIONS,
-} from '../data/eventData';
+import { fetchLiveLeaderboard, type LiveLeaderboardData } from '../services/scoreService';
 import type { ActResult } from '../types';
-
-// Build self-ratings map from admin registrations (actId → selfRating)
-// Maps act ids (act-01..act-08) via slot order to registration entries
-const SELF_RATING_MAP: Record<string, number> = {
-  'act-01': 9,
-  'act-02': 8,
-  'act-03': 8,
-  'act-04': 7,
-  'act-05': 7,
-  'act-06': 6,
-  'act-07': 9,
-  'act-08': 8,
-};
-
-const ALL_ACTS = [...MOCK_ACTS, ...MOCK_ACTS_EXTENDED];
-
-// Group audience votes by actId
-function groupVotes(votes: { actId: string; rating: number }[]): Record<string, number[]> {
-  return votes.reduce<Record<string, number[]>>((acc, v) => {
-    if (!acc[v.actId]) acc[v.actId] = [];
-    acc[v.actId].push(v.rating);
-    return acc;
-  }, {});
-}
 
 export const LeaderboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'solo' | 'group'>('solo');
   const [selectedResult, setSelectedResult] = useState<ActResult | null>(null);
   const [search, setSearch] = useState('');
+  const [data, setData] = useState<LiveLeaderboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const leaderboard = useMemo(() => {
-    const audienceVotesByAct = groupVotes(MOCK_VOTE_RECORDS);
-    return calculateLeaderboard({
-      acts: ALL_ACTS,
-      selfRatings: SELF_RATING_MAP,
-      judgeScores: MOCK_JUDGE_SCORES,
-      audienceVotesByAct,
-      judges: MOCK_JUDGES,
-    });
+  useEffect(() => {
+    let isMounted = true;
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetchLiveLeaderboard();
+        if (isMounted) {
+          setData(res);
+        }
+      } catch (err) {
+        console.warn('[LeaderboardPage] Error fetching leaderboard:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  const leaderboard = data?.leaderboard || { soloResults: [], groupResults: [], lastCalculatedAt: '', isLive: false };
 
   const activeResults = (activeTab === 'solo' ? leaderboard.soloResults : leaderboard.groupResults)
     .filter(r =>
@@ -59,9 +42,11 @@ export const LeaderboardPage: React.FC = () => {
       r.performerName.toLowerCase().includes(search.toLowerCase())
     );
 
-  const updatedAt = new Date(leaderboard.lastCalculatedAt).toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
+  const updatedAt = leaderboard.lastCalculatedAt
+    ? new Date(leaderboard.lastCalculatedAt).toLocaleTimeString('en-IN', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      })
+    : '—';
 
   return (
     <main className="min-h-screen bg-[#08080C] text-[#F4F4F6]">

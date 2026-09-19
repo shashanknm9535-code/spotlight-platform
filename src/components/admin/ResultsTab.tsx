@@ -1,55 +1,54 @@
-﻿import React, { useMemo, useState } from 'react';
-import { calculateLeaderboard, getJudgeSubmissionMatrix, round2 } from '../../services/scoreService';
-import {
-  MOCK_ACTS,
-  MOCK_ACTS_EXTENDED,
-  MOCK_JUDGE_SCORES,
-  MOCK_VOTE_RECORDS,
-  MOCK_JUDGES,
-} from '../../data/eventData';
+import React, { useEffect, useState } from 'react';
+import { fetchLiveLeaderboard, round2, type LiveLeaderboardData } from '../../services/scoreService';
 import { ActResultDetailModal } from '../leaderboard/ActResultDetailModal';
 import type { ActResult } from '../../types';
-
-const SELF_RATING_MAP: Record<string, number> = {
-  'act-01': 9, 'act-02': 8, 'act-03': 8, 'act-04': 7,
-  'act-05': 7, 'act-06': 6, 'act-07': 9, 'act-08': 8,
-};
-
-const ALL_ACTS = [...MOCK_ACTS, ...MOCK_ACTS_EXTENDED];
-
-function groupVotes(votes: { actId: string; rating: number }[]): Record<string, number[]> {
-  return votes.reduce<Record<string, number[]>>((acc, v) => {
-    if (!acc[v.actId]) acc[v.actId] = [];
-    acc[v.actId].push(v.rating);
-    return acc;
-  }, {});
-}
 
 export const ResultsTab: React.FC = () => {
   const [activeTrack, setActiveTrack] = useState<'solo' | 'group'>('solo');
   const [selectedResult, setSelectedResult] = useState<ActResult | null>(null);
+  const [data, setData] = useState<LiveLeaderboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const leaderboard = useMemo(() => {
-    const audienceVotesByAct = groupVotes(MOCK_VOTE_RECORDS);
-    return calculateLeaderboard({
-      acts: ALL_ACTS,
-      selfRatings: SELF_RATING_MAP,
-      judgeScores: MOCK_JUDGE_SCORES,
-      audienceVotesByAct,
-      judges: MOCK_JUDGES,
-    });
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetchLiveLeaderboard();
+        if (isMounted) {
+          setData(res);
+        }
+      } catch (err) {
+        console.warn('[ResultsTab] Error loading live leaderboard:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    loadData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const judgeMatrix = useMemo(() =>
-    getJudgeSubmissionMatrix(MOCK_JUDGE_SCORES, ALL_ACTS, MOCK_JUDGES),
-  []);
+  const leaderboard = data?.leaderboard || { soloResults: [], groupResults: [], lastCalculatedAt: '', isLive: false };
+  const judgeMatrix = data?.judgeMatrix || {};
+  const actsList = data?.actsList || [];
+  const judgesList = data?.judgesList || [];
+  const completionPct = data?.completionPct || 0;
+  const submittedCount = data?.submittedCount || 0;
+  const totalCombos = data?.totalCombos || 0;
 
   const trackResults = activeTrack === 'solo' ? leaderboard.soloResults : leaderboard.groupResults;
 
-  // Completion stats
-  const totalCombos = ALL_ACTS.length * MOCK_JUDGES.length;
-  const submittedCount = MOCK_JUDGE_SCORES.filter(s => s.submitted).length;
-  const completionPct = Math.round((submittedCount / totalCombos) * 100);
+  if (isLoading) {
+    return (
+      <div className="py-20 text-center font-mono text-xs text-zinc-500">
+        <span className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin inline-block mb-2" />
+        <p>Calculating live score aggregations...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -85,40 +84,42 @@ export const ResultsTab: React.FC = () => {
       </div>
 
       {/* Judge × Act Matrix */}
-      <div className="bg-white/[0.04] border border-white/10 rounded-xl overflow-x-auto">
-        <div className="p-3 border-b border-white/10">
-          <h3 className="text-xs font-bold text-white/50 tracking-widest">SUBMISSION MATRIX</h3>
-        </div>
-        <table className="w-full text-sm min-w-[500px]">
-          <thead>
-            <tr className="border-b border-white/10">
-              <th className="text-left px-4 py-2 text-xs text-white/30 font-bold w-36">JUDGE</th>
-              {ALL_ACTS.map(act => (
-                <th key={act.id} className="text-center px-2 py-2 text-xs text-white/30 font-bold">
-                  {act.id.replace('act-', 'A')}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {MOCK_JUDGES.map(judge => (
-              <tr key={judge.id} className="border-b border-white/5 last:border-0">
-                <td className="px-4 py-2.5 text-xs text-white/60 font-semibold whitespace-nowrap">{judge.name.split(' ').slice(-1)[0]}</td>
-                {ALL_ACTS.map(act => {
-                  const submitted = judgeMatrix[judge.id]?.[act.id] ?? false;
-                  return (
-                    <td key={act.id} className="text-center py-2.5">
-                      {submitted
-                        ? <span className="text-emerald-400 font-bold text-base">✓</span>
-                        : <span className="text-white/20 text-base">—</span>}
-                    </td>
-                  );
-                })}
+      {judgesList.length > 0 && actsList.length > 0 && (
+        <div className="bg-white/[0.04] border border-white/10 rounded-xl overflow-x-auto">
+          <div className="p-3 border-b border-white/10">
+            <h3 className="text-xs font-bold text-white/50 tracking-widest">SUBMISSION MATRIX</h3>
+          </div>
+          <table className="w-full text-sm min-w-[500px]">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th className="text-left px-4 py-2 text-xs text-white/30 font-bold w-36">JUDGE</th>
+                {actsList.map(act => (
+                  <th key={act.id} className="text-center px-2 py-2 text-xs text-white/30 font-bold">
+                    {act.actCode || act.id.replace('act-', 'A')}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {judgesList.map(judge => (
+                <tr key={judge.id} className="border-b border-white/5 last:border-0">
+                  <td className="px-4 py-2.5 text-xs text-white/60 font-semibold whitespace-nowrap">{judge.name.split(' ').slice(-1)[0]}</td>
+                  {actsList.map(act => {
+                    const submitted = judgeMatrix[judge.id]?.[act.id] ?? false;
+                    return (
+                      <td key={act.id} className="text-center py-2.5">
+                        {submitted
+                          ? <span className="text-emerald-400 font-bold text-base">✓</span>
+                          : <span className="text-white/20 text-base">—</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Track Tabs */}
       <div className="flex gap-1 p-1 bg-white/5 border border-white/10 rounded-xl w-fit">
@@ -145,60 +146,66 @@ export const ResultsTab: React.FC = () => {
           <div className="col-span-2 text-right">FINAL</div>
           <div className="col-span-1 text-right">GAP</div>
         </div>
-        {trackResults.map(result => (
-          <button
-            key={result.actId}
-            type="button"
-            onClick={() => setSelectedResult(result)}
-            className="w-full text-left grid grid-cols-12 gap-2 items-center px-4 py-3 border-b border-white/5 last:border-0 hover:bg-white/[0.04] transition-colors group"
-          >
-            <div className="col-span-1">
-              <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-black ${
-                result.rank === 1 ? 'bg-amber-400 text-black' :
-                result.rank === 2 ? 'bg-slate-300 text-slate-900' :
-                result.rank === 3 ? 'bg-amber-700 text-amber-100' :
-                'bg-white/10 text-white/60'
-              }`}>
-                #{result.rank}
-              </span>
-            </div>
-            <div className="col-span-4 min-w-0">
-              <div className="text-sm font-semibold text-white truncate">{result.actTitle}</div>
-              <div className="text-xs text-white/30 truncate">{result.performerName}</div>
-              <div className="flex gap-1 mt-0.5 flex-wrap">
-                {result.tiebreakerUsed && !result.isManualReview && (
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/20">
-                    TB:{result.tiebreakerUsed === 'audience_score' ? 'AUD' : 'ANCHOR'}
-                  </span>
-                )}
-                {result.isManualReview && (
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/20">MANUAL</span>
-                )}
+        {trackResults.length === 0 ? (
+          <div className="p-8 text-center text-xs font-mono text-zinc-500">
+            No score results calculated yet for {activeTrack} track.
+          </div>
+        ) : (
+          trackResults.map(result => (
+            <button
+              key={result.actId}
+              type="button"
+              onClick={() => setSelectedResult(result)}
+              className="w-full text-left grid grid-cols-12 gap-2 items-center px-4 py-3 border-b border-white/5 last:border-0 hover:bg-white/[0.04] transition-colors group"
+            >
+              <div className="col-span-1">
+                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-black ${
+                  result.rank === 1 ? 'bg-amber-400 text-black' :
+                  result.rank === 2 ? 'bg-slate-300 text-slate-900' :
+                  result.rank === 3 ? 'bg-amber-700 text-amber-100' :
+                  'bg-white/10 text-white/60'
+                }`}>
+                  #{result.rank}
+                </span>
               </div>
-            </div>
-            <div className="col-span-2 text-right">
-              <span className="text-sm font-semibold text-white/70">{result.panelScore.toFixed(2)}</span>
-              <div className="text-xs text-white/25">{result.judgesSubmitted}/3 judges</div>
-            </div>
-            <div className="col-span-2 text-right">
-              <span className="text-sm font-semibold text-white/70">{result.audienceScore.toFixed(2)}</span>
-              <div className="text-xs text-white/25">{result.totalAudienceVotes} votes</div>
-            </div>
-            <div className="col-span-2 text-right">
-              <span className={`text-base font-black tabular-nums ${result.rank <= 3 ? 'text-amber-300' : 'text-white'}`}>
-                {result.finalScore.toFixed(2)}
-              </span>
-            </div>
-            <div className="col-span-1 text-right">
-              <span className={`text-sm font-bold tabular-nums ${
-                result.selfRatingGap <= 1 ? 'text-emerald-400' :
-                result.selfRatingGap <= 2.5 ? 'text-amber-400' : 'text-red-400'
-              }`}>
-                {round2(result.selfRatingGap).toFixed(2)}
-              </span>
-            </div>
-          </button>
-        ))}
+              <div className="col-span-4 min-w-0">
+                <div className="text-sm font-semibold text-white truncate">{result.actTitle}</div>
+                <div className="text-xs text-white/30 truncate">{result.performerName}</div>
+                <div className="flex gap-1 mt-0.5 flex-wrap">
+                  {result.tiebreakerUsed && !result.isManualReview && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/20">
+                      TB:{result.tiebreakerUsed === 'audience_score' ? 'AUD' : 'ANCHOR'}
+                    </span>
+                  )}
+                  {result.isManualReview && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/20">MANUAL</span>
+                  )}
+                </div>
+              </div>
+              <div className="col-span-2 text-right">
+                <span className="text-sm font-semibold text-white/70">{result.panelScore.toFixed(2)}</span>
+                <div className="text-xs text-white/25">{result.judgesSubmitted}/3 judges</div>
+              </div>
+              <div className="col-span-2 text-right">
+                <span className="text-sm font-semibold text-white/70">{result.audienceScore.toFixed(2)}</span>
+                <div className="text-xs text-white/25">{result.totalAudienceVotes} votes</div>
+              </div>
+              <div className="col-span-2 text-right">
+                <span className={`text-base font-black tabular-nums ${result.rank <= 3 ? 'text-amber-300' : 'text-white'}`}>
+                  {result.finalScore.toFixed(2)}
+                </span>
+              </div>
+              <div className="col-span-1 text-right">
+                <span className={`text-sm font-bold tabular-nums ${
+                  result.selfRatingGap <= 1 ? 'text-emerald-400' :
+                  result.selfRatingGap <= 2.5 ? 'text-amber-400' : 'text-red-400'
+                }`}>
+                  {round2(result.selfRatingGap).toFixed(2)}
+                </span>
+              </div>
+            </button>
+          ))
+        )}
       </div>
 
       {/* Anomalies / Tiebreak Audit */}

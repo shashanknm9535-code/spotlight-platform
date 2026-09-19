@@ -139,6 +139,7 @@ export type VotingState =
 
 export interface Act {
   id: string;
+  actCode?: string;
   slotNumber: number;
   category: 'solo' | 'group';
   title: string;
@@ -239,6 +240,24 @@ export interface AdminTicketOrder {
   status: 'CONFIRMED';
   createdAt: string;
   tickets?: string[];
+}
+
+export interface OverviewStats {
+  totalPerformers: number;
+  confirmedPerformers: number;
+  pendingPerformers: number;
+  ticketsSold: number;
+  totalCapacity: number;
+  activeJudges: number;
+  totalJudges: number;
+  totalRegistrations?: number;
+  confirmedRegistrations?: number;
+  pendingRegistrations?: number;
+  rejectedRegistrations?: number;
+  ticketCapacity?: number;
+  ticketsRevenue?: number;
+  activeJudgesCount?: number;
+  totalJudgesCount?: number;
 }
 
 /* Phase 7: Score Aggregation Engine + Live Leaderboard Types */

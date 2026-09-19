@@ -1,4 +1,4 @@
-﻿/**
+/**
  * scoreService.ts — Phase 7: Score Aggregation Engine
  *
  * Pure, deterministic calculation functions. Zero React or Supabase dependencies.
@@ -170,6 +170,16 @@ export interface LeaderboardInput {
   judges: JudgeIdentity[];
 }
 
+// --- Top-level Leaderboard Calculator ----------------------------------------
+
+export interface LeaderboardInput {
+  acts: Act[];
+  selfRatings: Record<string, number>;
+  judgeScores: JudgeScore[];
+  audienceVotesByAct: Record<string, number[]>;
+  judges: JudgeIdentity[];
+}
+
 export function calculateLeaderboard(input: LeaderboardInput): LeaderboardState {
   const { acts, selfRatings, judgeScores, audienceVotesByAct, judges } = input;
 
@@ -206,10 +216,178 @@ export function getJudgeSubmissionMatrix(
   const matrix: Record<string, Record<string, boolean>> = {};
   for (const judge of judges) {
     matrix[judge.id] = {};
+    if (judge.code) matrix[judge.code] = {};
     for (const act of acts) {
-      const score = judgeScores.find(s => s.judgeId === judge.id && s.actId === act.id);
-      matrix[judge.id][act.id] = score?.submitted ?? false;
+      const score = judgeScores.find(s => (s.judgeId === judge.id || s.judgeId === judge.code) && (s.actId === act.id || s.actId === act.actCode));
+      const isSub = score?.submitted ?? false;
+      matrix[judge.id][act.id] = isSub;
+      if (judge.code) matrix[judge.code][act.id] = isSub;
     }
   }
   return matrix;
+}
+
+// --- Live Async Data Fetcher --------------------------------------------------
+
+export interface LiveLeaderboardData {
+  leaderboard: LeaderboardState;
+  judgeMatrix: Record<string, Record<string, boolean>>;
+  submittedCount: number;
+  totalCombos: number;
+  completionPct: number;
+  actsList: Act[];
+  judgesList: JudgeIdentity[];
+}
+
+/**
+ * Fetches real production data from Supabase (when VITE_USE_SUPABASE=true)
+ * or returns calculated mock data (when VITE_USE_SUPABASE=false).
+ */
+export async function fetchLiveLeaderboard(): Promise<LiveLeaderboardData> {
+  const { supabase, isSupabaseEnabled, logSupabaseError } = await import('../lib/supabase/client');
+
+  if (!isSupabaseEnabled || !supabase) {
+    const {
+      MOCK_ACTS,
+      MOCK_ACTS_EXTENDED,
+      MOCK_JUDGE_SCORES,
+      MOCK_VOTE_RECORDS,
+      MOCK_JUDGES,
+    } = await import('../data/eventData');
+
+    const selfRatingMap: Record<string, number> = {
+      'act-01': 9, 'act-02': 8, 'act-03': 8, 'act-04': 7,
+      'act-05': 7, 'act-06': 6, 'act-07': 9, 'act-08': 8,
+    };
+
+    const allActs = [...MOCK_ACTS, ...MOCK_ACTS_EXTENDED];
+    const audienceVotesByAct = MOCK_VOTE_RECORDS.reduce<Record<string, number[]>>((acc, v) => {
+      if (!acc[v.actId]) acc[v.actId] = [];
+      acc[v.actId].push(v.rating);
+      return acc;
+    }, {});
+
+    const leaderboard = calculateLeaderboard({
+      acts: allActs,
+      selfRatings: selfRatingMap,
+      judgeScores: MOCK_JUDGE_SCORES,
+      audienceVotesByAct,
+      judges: MOCK_JUDGES,
+    });
+
+    const judgeMatrix = getJudgeSubmissionMatrix(MOCK_JUDGE_SCORES, allActs, MOCK_JUDGES);
+    const totalCombos = allActs.length * MOCK_JUDGES.length;
+    const submittedCount = MOCK_JUDGE_SCORES.filter(s => s.submitted).length;
+    const completionPct = totalCombos > 0 ? Math.round((submittedCount / totalCombos) * 100) : 0;
+
+    return {
+      leaderboard,
+      judgeMatrix,
+      submittedCount,
+      totalCombos,
+      completionPct,
+      actsList: allActs,
+      judgesList: MOCK_JUDGES,
+    };
+  }
+
+  try {
+    const [actsRes, judgesRes, scoresRes, votesRes] = await Promise.all([
+      supabase.from('acts').select('*').eq('status', 'APPROVED').order('running_order', { ascending: true }),
+      supabase.from('judges').select('*').eq('is_active', true),
+      supabase.from('judge_scores').select('*').eq('submitted', true),
+      supabase.from('audience_votes').select('act_id, rating'),
+    ]);
+
+    if (actsRes.error) logSupabaseError('ScoreService', 'fetchLiveLeaderboard (acts)', actsRes.error);
+    if (judgesRes.error) logSupabaseError('ScoreService', 'fetchLiveLeaderboard (judges)', judgesRes.error);
+    if (scoresRes.error) logSupabaseError('ScoreService', 'fetchLiveLeaderboard (scores)', scoresRes.error);
+    if (votesRes.error) logSupabaseError('ScoreService', 'fetchLiveLeaderboard (votes)', votesRes.error);
+
+    const dbActs = (actsRes.data as any[]) || [];
+    const dbJudges = (judgesRes.data as any[]) || [];
+    const dbScores = (scoresRes.data as any[]) || [];
+    const dbVotes = (votesRes.data as any[]) || [];
+
+    const actsList: Act[] = dbActs.map((act, idx) => ({
+      id: act.id,
+      actCode: act.act_code,
+      slotNumber: act.running_order || idx + 1,
+      title: act.title || 'Untitled Performance',
+      performerName: act.performer_name || 'Performer',
+      category: act.category === 'GROUP' ? 'group' : 'solo',
+      department: act.department || 'N/A',
+      year: act.year || 'N/A',
+      performanceType: act.performance_type || act.title || 'Performance',
+      blurb: act.bio || '',
+      photoUrl: act.photo_url || '',
+    }));
+
+    const selfRatings: Record<string, number> = {};
+    dbActs.forEach(act => {
+      selfRatings[act.id] = act.self_rating || 5;
+    });
+
+    const judgesList: JudgeIdentity[] = dbJudges.map(j => ({
+      id: j.id,
+      code: j.judge_code,
+      name: j.name,
+      title: 'Official Judge Panelist',
+      role: j.is_anchor ? 'Anchor Judge & Tiebreaker' : 'Panel Judge',
+    }));
+
+    const judgeScoresList: JudgeScore[] = dbScores.map(s => ({
+      id: s.id,
+      judgeId: s.judge_id,
+      actId: s.act_id,
+      creativity: s.creativity,
+      execution: s.execution,
+      stagePresence: s.stage_presence,
+      audienceEngagement: s.audience_engagement,
+      total: (s.creativity || 0) + (s.execution || 0) + (s.stage_presence || 0) + (s.audience_engagement || 0),
+      notes: s.notes || undefined,
+      submitted: s.submitted ?? true,
+      createdAt: s.submitted_at || s.created_at || new Date().toISOString(),
+    }));
+
+    const audienceVotesByAct: Record<string, number[]> = {};
+    dbVotes.forEach(v => {
+      if (!audienceVotesByAct[v.act_id]) audienceVotesByAct[v.act_id] = [];
+      audienceVotesByAct[v.act_id].push(v.rating);
+    });
+
+    const leaderboard = calculateLeaderboard({
+      acts: actsList,
+      selfRatings,
+      judgeScores: judgeScoresList,
+      audienceVotesByAct,
+      judges: judgesList,
+    });
+
+    const judgeMatrix = getJudgeSubmissionMatrix(judgeScoresList, actsList, judgesList);
+    const totalCombos = actsList.length * judgesList.length;
+    const submittedCount = judgeScoresList.length;
+    const completionPct = totalCombos > 0 ? Math.round((submittedCount / totalCombos) * 100) : 0;
+
+    return {
+      leaderboard,
+      judgeMatrix,
+      submittedCount,
+      totalCombos,
+      completionPct,
+      actsList,
+      judgesList,
+    };
+  } catch (err) {
+    logSupabaseError('ScoreService', 'fetchLiveLeaderboard', err);
+    return {
+      leaderboard: { soloResults: [], groupResults: [], lastCalculatedAt: new Date().toISOString(), isLive: false },
+      judgeMatrix: {},
+      submittedCount: 0,
+      totalCombos: 0,
+      completionPct: 0,
+      actsList: [],
+      judgesList: [],
+    };
+  }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { AdminTab, AdminRegistration, Act, LiveEventState, RegistrationStatus } from '../types';
+import type { AdminTab, AdminRegistration, Act, LiveEventState, RegistrationStatus, OverviewStats } from '../types';
 import { MOCK_ACTS } from '../data/eventData';
 import {
   authenticateAdminCode,
@@ -10,6 +10,7 @@ import {
   getLiveEventState,
   updateLiveEventState,
   subscribeToEventState,
+  getOverviewStats,
 } from '../services/adminService';
 import {
   signInWithEmailPassword,
@@ -50,6 +51,7 @@ export const AdminPage: React.FC = () => {
   // Admin Data Stores
   const [registrations, setRegistrations] = useState<AdminRegistration[]>([]);
   const [runningOrder, setRunningOrder] = useState<Act[]>([]);
+  const [overviewStats, setOverviewStats] = useState<OverviewStats | undefined>(undefined);
   const [liveState, setLiveState] = useState<LiveEventState>({
     eventStatus: 'live',
     currentActId: '',
@@ -58,7 +60,9 @@ export const AdminPage: React.FC = () => {
     totalVotesReceived: 0,
   });
 
-  const currentAct = runningOrder.find((a) => a.id === liveState.currentActId) || runningOrder[0] || MOCK_ACTS[0];
+  const currentAct = runningOrder.find((a) => a.id === liveState.currentActId)
+    || runningOrder[0]
+    || (!isSupabaseEnabled ? MOCK_ACTS[0] : null);
 
   // Initial Auth Check for Supabase
   useEffect(() => {
@@ -95,16 +99,18 @@ export const AdminPage: React.FC = () => {
 
     const loadData = async () => {
       try {
-        const [regs, order, live] = await Promise.all([
+        const [regs, order, live, stats] = await Promise.all([
           getAdminRegistrations(),
           getRunningOrder(),
           getLiveEventState(),
+          getOverviewStats(),
         ]);
 
         if (!isMounted) return;
         setRegistrations(regs);
         setRunningOrder(order);
         setLiveState(live);
+        setOverviewStats(stats);
       } catch (err) {
         console.warn('[AdminPage] Error loading admin data:', err);
       }
@@ -336,6 +342,7 @@ export const AdminPage: React.FC = () => {
                 <OverviewTab
                   liveState={liveState}
                   currentAct={currentAct}
+                  overviewStats={overviewStats}
                   onNavigateTab={(tab) => setActiveTab(tab)}
                   onToggleVoting={() => handleUpdateLiveState({ votingOpen: !liveState.votingOpen })}
                   onNextAct={handleNextAct}

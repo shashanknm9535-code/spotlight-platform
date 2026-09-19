@@ -10,6 +10,7 @@ import type {
   Act,
   LiveEventState,
   AdminTicketOrder,
+  OverviewStats,
 } from '../types';
 import { supabase, isSupabaseEnabled, isUuid, logSupabaseError } from '../lib/supabase/client';
 import type { DbAct, DbTicket, DbJudge } from '../types/database';
@@ -87,8 +88,11 @@ const mapDbActToAct = (act: any, idx: number): Act => {
   };
 };
 
+
+
 /**
  * Fetches all performer registrations from Supabase or mock store.
+ * Returns [] on error or empty DB in production mode (never returns mock data in production).
  */
 export const getAdminRegistrations = async (): Promise<AdminRegistration[]> => {
   if (!isSupabaseEnabled || !supabase) {
@@ -103,13 +107,13 @@ export const getAdminRegistrations = async (): Promise<AdminRegistration[]> => {
 
     if (error) {
       logSupabaseError('AdminService', 'getAdminRegistrations', error);
-      return [...registrationsStore];
+      return [];
     }
-    if (!data) return [...registrationsStore];
+    if (!data) return [];
     return data.map(mapDbActToRegistration);
   } catch (err) {
     logSupabaseError('AdminService', 'getAdminRegistrations', err);
-    return [...registrationsStore];
+    return [];
   }
 };
 
@@ -157,6 +161,7 @@ export const updateRegistrationStatus = async (
 
 /**
  * Gets current running order list (approved acts sorted by running_order).
+ * Returns [] on error or empty DB in production mode (never returns mock data in production).
  */
 export const getRunningOrder = async (): Promise<Act[]> => {
   if (!isSupabaseEnabled || !supabase) {
@@ -172,22 +177,20 @@ export const getRunningOrder = async (): Promise<Act[]> => {
 
     if (error) {
       logSupabaseError('AdminService', 'getRunningOrder', error);
-      return [...runningOrderStore];
+      return [];
     }
-    if (!data || data.length === 0) {
-      return [...runningOrderStore];
-    }
+    if (!data) return [];
 
     return data.map((act, idx) => mapDbActToAct(act, idx));
   } catch (err) {
     logSupabaseError('AdminService', 'getRunningOrder', err);
-    return [...runningOrderStore];
+    return [];
   }
 };
 
 /**
  * Reorders acts or swaps positions.
- * Skips updating DB if act.id is not a valid UUID to avoid HTTP 400 invalid input syntax error.
+ * Uses a safe two-pass update to prevent index collision during sequential updates.
  */
 export const reorderActs = async (newActs: Act[]): Promise<Act[]> => {
   if (!isSupabaseEnabled || !supabase) {
@@ -197,13 +200,20 @@ export const reorderActs = async (newActs: Act[]): Promise<Act[]> => {
   }
 
   try {
-    for (let idx = 0; idx < newActs.length; idx++) {
-      const act = newActs[idx];
-      if (!isUuid(act.id)) continue;
+    const validActs = newActs.filter((a) => isUuid(a.id));
 
+    // Pass 1: Offset to temporary range
+    for (let idx = 0; idx < validActs.length; idx++) {
+      await (supabase.from('acts') as any)
+        .update({ running_order: 1000 + idx + 1 })
+        .eq('id', validActs[idx].id);
+    }
+
+    // Pass 2: Set final unique sequential running order
+    for (let idx = 0; idx < validActs.length; idx++) {
       const { error } = await (supabase.from('acts') as any)
         .update({ running_order: idx + 1 })
-        .eq('id', act.id);
+        .eq('id', validActs[idx].id);
 
       if (error) {
         logSupabaseError('AdminService', 'reorderActs', error);
@@ -212,7 +222,7 @@ export const reorderActs = async (newActs: Act[]): Promise<Act[]> => {
     return await getRunningOrder();
   } catch (err) {
     logSupabaseError('AdminService', 'reorderActs', err);
-    return newActs;
+    return await getRunningOrder();
   }
 };
 
@@ -244,7 +254,13 @@ export const getLiveEventState = async (): Promise<LiveEventState> => {
     }
 
     if (!data) {
-      return { ...liveStateStore };
+      return {
+        eventStatus: 'scheduled',
+        currentActId: '',
+        votingOpen: false,
+        votingTimeRemaining: 0,
+        totalVotesReceived: 0,
+      };
     }
 
     const statusMap: Record<string, 'scheduled' | 'live' | 'paused' | 'ended'> = {
@@ -257,7 +273,7 @@ export const getLiveEventState = async (): Promise<LiveEventState> => {
 
     const dbEvent = data as any;
     const currentState: LiveEventState = {
-      eventStatus: statusMap[dbEvent.status] || 'live',
+      eventStatus: statusMap[dbEvent.status] || 'scheduled',
       currentActId: isUuid(dbEvent.current_act_id) ? dbEvent.current_act_id : '',
       votingOpen: dbEvent.voting_open ?? false,
       votingTimeRemaining: dbEvent.voting_open ? 45 : 0,
@@ -268,7 +284,13 @@ export const getLiveEventState = async (): Promise<LiveEventState> => {
     return currentState;
   } catch (err) {
     logSupabaseError('AdminService', 'getLiveEventState', err);
-    return { ...liveStateStore };
+    return {
+      eventStatus: 'scheduled',
+      currentActId: '',
+      votingOpen: false,
+      votingTimeRemaining: 0,
+      totalVotesReceived: 0,
+    };
   }
 };
 
@@ -367,7 +389,7 @@ export const getJudgeMatrix = async (): Promise<Record<string, Record<string, bo
     scores.forEach((s: any) => {
       const judgeKeys = [s.judge_id, judgeCodeMap[s.judge_id]].filter(Boolean);
       const actKeys = [s.act_id, actCodeMap[s.act_id], actSlotMap[s.act_id]].filter(Boolean);
-      const submitted = s.submitted ?? false;
+      const submitted = s.submitted ?? true;
 
       judgeKeys.forEach((jKey) => {
         if (!matrix[jKey]) matrix[jKey] = {};
@@ -386,6 +408,7 @@ export const getJudgeMatrix = async (): Promise<Record<string, Record<string, bo
 
 /**
  * Gets ticket orders list for Admin overview.
+ * Returns [] on error or empty DB in production mode (never returns mock data in production).
  */
 export const getAdminTickets = async (): Promise<AdminTicketOrder[]> => {
   if (!isSupabaseEnabled || !supabase) {
@@ -400,15 +423,15 @@ export const getAdminTickets = async (): Promise<AdminTicketOrder[]> => {
 
     if (error) {
       logSupabaseError('AdminService', 'getAdminTickets', error);
-      return [...MOCK_ADMIN_TICKETS];
+      return [];
     }
-    if (!data) return [...MOCK_ADMIN_TICKETS];
+    if (!data) return [];
 
     // Group tickets by payment_reference to form order groups
     const ordersMap: Record<string, AdminTicketOrder> = {};
 
     ((data as any[]) || []).forEach((tkt: any, idx: number) => {
-      const ref = tkt.payment_reference || `MOCK-PAY-${idx + 1}`;
+      const ref = tkt.payment_reference || `PAY-${idx + 1}`;
       if (!ordersMap[ref]) {
         ordersMap[ref] = {
           id: `SPT-ORD-${ref.replace(/[^0-9]/g, '').slice(0, 4) || idx + 1}`,
@@ -434,7 +457,7 @@ export const getAdminTickets = async (): Promise<AdminTicketOrder[]> => {
     return Object.values(ordersMap);
   } catch (err) {
     logSupabaseError('AdminService', 'getAdminTickets', err);
-    return [...MOCK_ADMIN_TICKETS];
+    return [];
   }
 };
 
@@ -469,5 +492,70 @@ export const subscribeToEventState = (
   } catch (err) {
     console.warn('[AdminService] Failed to initialize Realtime subscription:', err);
     return () => {};
+  }
+};
+
+/**
+ * Gets dynamic summary stats for Admin Overview tab.
+ */
+export const getOverviewStats = async (): Promise<OverviewStats> => {
+  if (!isSupabaseEnabled || !supabase) {
+    return {
+      totalPerformers: 126,
+      confirmedPerformers: 98,
+      pendingPerformers: 28,
+      ticketsSold: 643,
+      totalCapacity: 800,
+      activeJudges: 3,
+      totalJudges: 3,
+    };
+  }
+
+  try {
+    const { data: rpcData, error: rpcError } = await (supabase as any).rpc('admin_get_overview_stats');
+    if (!rpcError && rpcData) {
+      const res = rpcData as any;
+      return {
+        totalPerformers: res.total_performers ?? res.totalPerformers ?? 0,
+        confirmedPerformers: res.confirmed_performers ?? res.confirmedPerformers ?? 0,
+        pendingPerformers: res.pending_performers ?? res.pendingPerformers ?? 0,
+        ticketsSold: res.tickets_sold ?? res.ticketsSold ?? 0,
+        totalCapacity: res.total_capacity ?? res.totalCapacity ?? 800,
+        activeJudges: res.active_judges ?? res.activeJudges ?? 0,
+        totalJudges: res.total_judges ?? res.totalJudges ?? 0,
+      };
+    }
+
+    // Direct table queries fallback if RPC does not exist
+    const [{ count: confirmedCount }, { count: pendingCount }, { count: ticketCount }, { count: judgeCount }] = await Promise.all([
+      supabase.from('acts').select('*', { count: 'exact', head: true }).eq('status', 'APPROVED'),
+      supabase.from('acts').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
+      supabase.from('tickets').select('*', { count: 'exact', head: true }),
+      supabase.from('judges').select('*', { count: 'exact', head: true }).eq('is_active', true),
+    ]);
+
+    const confirmed = confirmedCount || 0;
+    const pending = pendingCount || 0;
+
+    return {
+      totalPerformers: confirmed + pending,
+      confirmedPerformers: confirmed,
+      pendingPerformers: pending,
+      ticketsSold: ticketCount || 0,
+      totalCapacity: 800,
+      activeJudges: judgeCount || 0,
+      totalJudges: judgeCount || 0,
+    };
+  } catch (err) {
+    logSupabaseError('AdminService', 'getOverviewStats', err);
+    return {
+      totalPerformers: 0,
+      confirmedPerformers: 0,
+      pendingPerformers: 0,
+      ticketsSold: 0,
+      totalCapacity: 800,
+      activeJudges: 0,
+      totalJudges: 0,
+    };
   }
 };

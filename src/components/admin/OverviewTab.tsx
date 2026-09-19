@@ -1,12 +1,13 @@
 import React from 'react';
-import type { LiveEventState, Act, AdminTab } from '../../types';
+import type { LiveEventState, Act, AdminTab, OverviewStats } from '../../types';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { Users, Ticket, Award, Radio, ArrowRight, Play, Square, FastForward } from 'lucide-react';
+import { Users, Ticket, Award, Radio, ArrowRight, FastForward } from 'lucide-react';
 
 export interface OverviewTabProps {
   liveState: LiveEventState;
-  currentAct: Act;
+  currentAct?: Act | null;
+  overviewStats?: OverviewStats;
   onNavigateTab: (tab: AdminTab) => void;
   onToggleVoting: () => void;
   onNextAct: () => void;
@@ -15,10 +16,32 @@ export interface OverviewTabProps {
 export const OverviewTab: React.FC<OverviewTabProps> = ({
   liveState,
   currentAct,
+  overviewStats,
   onNavigateTab,
   onToggleVoting,
   onNextAct,
 }) => {
+  const stats = overviewStats || {
+    totalPerformers: 126,
+    confirmedPerformers: 98,
+    pendingPerformers: 28,
+    ticketsSold: 643,
+    totalCapacity: 800,
+    activeJudges: 3,
+    totalJudges: 3,
+  };
+
+  const capacityPct = stats.totalCapacity > 0
+    ? Math.round((stats.ticketsSold / stats.totalCapacity) * 100)
+    : 0;
+
+  const actSlotText = currentAct?.slotNumber
+    ? `ACT #${currentAct.slotNumber.toString().padStart(2, '0')}`
+    : 'NO ACT';
+
+  const actTitleText = currentAct?.title || 'No Act Active';
+  const performerNameText = currentAct?.performerName || 'Stage Clear';
+
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       <div>
@@ -39,9 +62,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <span>PERFORMERS</span>
             <Users className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-4xl font-display font-extrabold text-white">126</div>
+          <div className="text-4xl font-display font-extrabold text-white">{stats.totalPerformers}</div>
           <div className="text-xs font-mono text-zinc-400">
-            <span className="text-emerald-400 font-bold">98 Confirmed</span> • 28 Pending
+            <span className="text-emerald-400 font-bold">{stats.confirmedPerformers} Confirmed</span> • {stats.pendingPerformers} Pending
           </div>
         </div>
 
@@ -52,12 +75,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <Ticket className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-4xl font-display font-extrabold text-amber-400">
-            643 <span className="text-xl font-sans text-zinc-500">/ 800</span>
+            {stats.ticketsSold} <span className="text-xl font-sans text-zinc-500">/ {stats.totalCapacity}</span>
           </div>
           <div className="w-full bg-[#181826] h-1.5 overflow-hidden">
-            <div className="bg-amber-400 h-full w-[80%]" />
+            <div className="bg-amber-400 h-full" style={{ width: `${Math.min(100, capacityPct)}%` }} />
           </div>
-          <div className="text-[11px] font-mono text-zinc-400">80% Auditorium Capacity</div>
+          <div className="text-[11px] font-mono text-zinc-400">{capacityPct}% Auditorium Capacity</div>
         </div>
 
         {/* CURRENT ACT */}
@@ -67,10 +90,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
           </div>
           <div className="text-4xl font-display font-extrabold text-white">
-            ACT #{currentAct.slotNumber.toString().padStart(2, '0')}
+            {actSlotText}
           </div>
           <div className="text-xs font-mono text-amber-400 truncate">
-            {currentAct.title}
+            {actTitleText}
           </div>
         </div>
 
@@ -80,7 +103,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <span>JUDGES PANEL</span>
             <Award className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-4xl font-display font-extrabold text-white">3 / 3</div>
+          <div className="text-4xl font-display font-extrabold text-white">
+            {stats.activeJudges} / {stats.totalJudges || 3}
+          </div>
           <div className="text-xs font-mono text-emerald-400 font-bold">● Active & Online</div>
         </div>
       </div>
@@ -100,14 +125,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs font-mono">
           <div className="p-4 bg-[#141420] border border-[#27273C] space-y-1">
             <span className="text-zinc-500 block">NOW ON STAGE</span>
-            <span className="text-lg font-bold text-white uppercase block">{currentAct.title}</span>
-            <span className="text-amber-400 block">{currentAct.performerName}</span>
+            <span className="text-lg font-bold text-white uppercase block truncate">{actTitleText}</span>
+            <span className="text-amber-400 block truncate">{performerNameText}</span>
           </div>
 
           <div className="p-4 bg-[#141420] border border-[#27273C] space-y-1">
             <span className="text-zinc-500 block">VOTING WINDOW</span>
             <span className={`text-lg font-bold block ${liveState.votingOpen ? 'text-emerald-400' : 'text-red-400'}`}>
-              {liveState.votingOpen ? 'OPEN (00:42)' : 'CLOSED'}
+              {liveState.votingOpen ? `OPEN (${liveState.votingTimeRemaining || 42}s)` : 'CLOSED'}
             </span>
             <span className="text-zinc-400 block">{liveState.totalVotesReceived} Votes Received</span>
           </div>
