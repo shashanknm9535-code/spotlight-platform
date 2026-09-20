@@ -12,6 +12,7 @@ import type {
   AdminTicketOrder,
   OverviewStats,
   JudgeDetail,
+  JudgeCreationResult,
 } from '../types';
 import { supabase, isSupabaseEnabled, isUuid, logSupabaseError } from '../lib/supabase/client';
 import type { DbAct, DbTicket, DbJudge } from '../types/database';
@@ -613,54 +614,59 @@ export const getJudges = async (): Promise<JudgeDetail[]> => {
 };
 
 /**
- * Creates a new judge record via the admin_create_judge security-definer RPC.
- * The RPC auto-generates the JUDGE-XX code and enforces admin-only access.
- * No service-role key is used in the browser.
+ * Creates a new judge + Supabase Auth account via the secure Edge Function.
+ *
+ * PRODUCTION: calls `create_judge` Edge Function.
+ *   - The Edge Function uses the service-role key server-side.
+ *   - The browser sends only its session JWT (anon key + session).
+ *   - Never exposes service-role key to the browser.
+ *
+ * MOCK: returns a stub JudgeCreationResult.
  */
 export const createJudge = async (
   name: string,
   email: string,
   isAnchor: boolean = false
-): Promise<JudgeDetail | null> => {
+): Promise<JudgeCreationResult> => {
+  // ── MOCK MODE ────────────────────────────────────────────────────────────
   if (!isSupabaseEnabled || !supabase) {
-    // Mock mode stub
-    const newJudge: JudgeDetail = {
-      id: `mock-judge-${Date.now()}`,
-      name,
-      email,
-      code: `JUDGE-0${Math.floor(Math.random() * 90 + 10)}`,
-      isAnchor,
-      isActive: true,
+    const mockResult: JudgeCreationResult = {
+      success: true,
+      alreadyExists: false,
+      judge: {
+        id: `mock-judge-${Date.now()}`,
+        name,
+        email,
+        code: `JUDGE-0${Math.floor(Math.random() * 8 + 1)}`,
+        isAnchor,
+        isActive: true,
+        authLinked: false,
+      },
+      tempPassword: 'Spotlight9999!',
+      authCreated: false,
+      message: 'Mock judge created (demo mode).',
     };
-    return newJudge;
+    return mockResult;
   }
 
+  // ── PRODUCTION: call Edge Function ──────────────────────────────────────
   try {
-    const { data, error } = await (supabase as any).rpc('admin_create_judge', {
-      p_name: name,
-      p_email: email,
-      p_is_anchor: isAnchor,
+    const { data, error } = await supabase.functions.invoke('create_judge', {
+      body: { name, email, isAnchor },
     });
 
     if (error) {
-      logSupabaseError('AdminService', 'createJudge', error);
-      const msg = error.message || '';
-      if (msg.includes('UNAUTHORIZED')) throw new Error('Only active admins can create judges.');
-      if (msg.includes('INVALID_EMAIL')) throw new Error('A valid email address is required.');
-      if (msg.includes('INVALID_NAME')) throw new Error('Judge full name is required.');
-      throw new Error('Failed to create judge. Please try again.');
+      logSupabaseError('AdminService', 'createJudge (edge fn)', error);
+      // supabase.functions.invoke wraps HTTP errors in error.message
+      const msg = error.message || 'Failed to create judge.';
+      throw new Error(msg);
     }
 
-    if (!data) return null;
+    if (!data?.success) {
+      throw new Error(data?.error || 'Unexpected response from judge creation.');
+    }
 
-    return {
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      code: data.code,
-      isAnchor: data.is_anchor ?? isAnchor,
-      isActive: data.is_active ?? true,
-    };
+    return data as JudgeCreationResult;
   } catch (err: any) {
     if (err?.message && !err?.code) throw err;
     logSupabaseError('AdminService', 'createJudge', err);

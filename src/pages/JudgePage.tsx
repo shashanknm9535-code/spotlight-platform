@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { JudgeIdentity, JudgeScore, Act, JudgingState } from '../types';
+import type { JudgeIdentity, JudgeScore, Act, JudgingState, JudgeAssignment } from '../types';
 import { MOCK_ACTS } from '../data/eventData';
 import {
   authenticateJudgeCode,
@@ -15,6 +15,7 @@ import {
   subscribeToAuthChanges,
 } from '../services/authService';
 import { getRunningOrder } from '../services/adminService';
+import { getMyJudgeAssignments } from '../services/judgeAssignmentService';
 import { isSupabaseEnabled } from '../lib/supabase/client';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Badge } from '../components/ui/Badge';
@@ -25,7 +26,7 @@ import { RubricScorer } from '../components/judge/RubricScorer';
 import { ScoreReviewModal } from '../components/judge/ScoreReviewModal';
 import { LockedScoreSummary } from '../components/judge/LockedScoreSummary';
 import { JudgeDevControls } from '../components/judge/JudgeDevControls';
-import { KeyRound, ArrowRight, AlertTriangle } from 'lucide-react';
+import { KeyRound, ArrowRight, AlertTriangle, Clock, Calendar } from 'lucide-react';
 
 export const JudgePage: React.FC = () => {
   const [judgingState, setJudgingState] = useState<JudgingState>('access');
@@ -46,6 +47,8 @@ export const JudgePage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [approvedActs, setApprovedActs] = useState<Act[]>([]);
+  const [myAssignments, setMyAssignments] = useState<JudgeAssignment[]>([]);
+  const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
 
   const actsList = isSupabaseEnabled
     ? approvedActs
@@ -79,16 +82,34 @@ export const JudgePage: React.FC = () => {
       }
     };
 
+    const loadMyAssignments = async () => {
+      try {
+        const assigns = await getMyJudgeAssignments();
+        setMyAssignments(assigns);
+      } catch {
+        // Non-blocking: assignment display failure never blocks judging
+      } finally {
+        setAssignmentsLoaded(true);
+      }
+    };
+
     checkInitialSession();
     loadActs();
+    loadMyAssignments();
 
     const unsubscribe = subscribeToAuthChanges(async (session) => {
       if (session?.user) {
         const activeJudge = await checkIsActiveJudge(session.user.id);
         setJudge(activeJudge);
+        if (activeJudge) {
+          // Reload assignments when auth state changes
+          getMyJudgeAssignments().then((a) => { setMyAssignments(a); setAssignmentsLoaded(true); }).catch(() => {});
+        }
       } else {
         setJudge(null);
         setJudgingState('access');
+        setMyAssignments([]);
+        setAssignmentsLoaded(false);
       }
     });
 
@@ -351,6 +372,72 @@ export const JudgePage: React.FC = () => {
                 setJudgingState('access');
               }}
             />
+
+            {/* MY SCHEDULE — organisational context, never blocks access */}
+            {assignmentsLoaded && (
+              <div className="p-5 bg-[#0E0E16] border border-[#1E1E2C] font-mono text-xs">
+                <div className="flex items-center gap-2 pb-3 mb-3 border-b border-[#1C1C2A]">
+                  <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[11px] font-bold text-white uppercase tracking-widest">MY SCHEDULE</span>
+                </div>
+
+                {myAssignments.length === 0 ? (
+                  <p className="text-zinc-500 text-[11px]">
+                    No judge assignments have been scheduled for you.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {myAssignments.map((a) => {
+                      const now = Date.now();
+                      const start = new Date(a.startTime).getTime();
+                      const end = new Date(a.endTime).getTime();
+                      const isCurrent = now >= start && now <= end;
+                      const isUpcoming = now < start;
+                      const fmtTime = (iso: string) =>
+                        new Date(iso).toLocaleTimeString('en-IN', {
+                          hour: '2-digit', minute: '2-digit', hour12: true,
+                        });
+                      const roleLabel = a.roleOverride ?? (a.judgeIsAnchor ? 'ANCHOR' : 'PANEL');
+
+                      return (
+                        <div
+                          key={a.id}
+                          className={`flex items-start gap-3 px-3 py-2.5 border ${
+                            isCurrent
+                              ? 'border-amber-400/40 bg-amber-400/5'
+                              : 'border-[#1E1E2C] bg-[#0A0A14]'
+                          }`}
+                        >
+                          <Clock className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
+                            isCurrent ? 'text-amber-400' : 'text-zinc-500'
+                          }`} />
+                          <div className="space-y-0.5">
+                            {isCurrent && (
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-amber-400">CURRENT SESSION</span>
+                            )}
+                            {isUpcoming && (
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">UPCOMING</span>
+                            )}
+                            {!isCurrent && !isUpcoming && (
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-600">PAST</span>
+                            )}
+                            <p className="text-white font-bold">
+                              {fmtTime(a.startTime)} – {fmtTime(a.endTime)}
+                            </p>
+                            <p className="text-zinc-400 text-[10px] uppercase tracking-wide">
+                              {roleLabel} Judge
+                            </p>
+                            {a.notes && (
+                              <p className="text-zinc-500 text-[10px]">{a.notes}</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 2-COLUMN LAYOUT (LEFT: ACT PROFILE, RIGHT: SCORER OR LOCKED SUMMARY) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

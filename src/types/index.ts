@@ -196,6 +196,7 @@ export interface JudgeAssignment {
   judgeId: string;
   judgeName?: string;
   judgeCode?: string;
+  judgeIsAnchor?: boolean;
   startTime: string;
   endTime: string;
   roleOverride?: 'ANCHOR' | 'PANEL' | null;
@@ -203,6 +204,30 @@ export interface JudgeAssignment {
   createdAt?: string;
   updatedAt?: string;
 }
+
+/**
+ * Result returned by the create_judge Edge Function.
+ * tempPassword is only present on first creation and MUST be copied immediately.
+ */
+export interface JudgeCreationResult {
+  success: boolean;
+  alreadyExists: boolean;
+  judge: {
+    id: string;
+    name: string;
+    email: string;
+    code: string;
+    isAnchor: boolean;
+    isActive: boolean;
+    authLinked: boolean;
+    createdAt?: string;
+  };
+  /** Present only on first creation. null on subsequent calls or alreadyExists=true. */
+  tempPassword: string | null;
+  authCreated: boolean;
+  message: string;
+}
+
 
 export interface JudgeScore {
   id: string;

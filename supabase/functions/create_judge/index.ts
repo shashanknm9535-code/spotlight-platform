@@ -6,134 +6,203 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
+    // ── 1. Bootstrap admin client (service-role, server-side only) ──────────
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
     if (!supabaseUrl || !serviceRoleKey) {
-      return new Response(
-        JSON.stringify({ error: 'Server misconfiguration: missing Supabase credentials' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse({ error: 'Server misconfiguration: missing Supabase credentials' }, 500);
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
-
-    // Verify Authorization Header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized user token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Verify caller is active admin in admin_users
-    const { data: adminRow } = await supabaseAdmin
-      .from('admin_users')
-      .select('is_active')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (!adminRow?.is_active) {
-      return new Response(
-        JSON.stringify({ error: 'Forbidden: Active admin access required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const { name, email, isAnchor, password } = await req.json();
-
-    if (!name || !email) {
-      return new Response(
-        JSON.stringify({ error: 'Judge full name and email are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanName = name.trim();
-    const tempPassword = password || `Spotlight2026!${Math.floor(1000 + Math.random() * 9000)}`;
-
-    // Create Supabase Auth User securely via Admin API
-    const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: cleanEmail,
-      password: tempPassword,
-      email_confirm: true,
-      user_metadata: { name: cleanName, role: 'judge' },
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    if (createError) {
-      return new Response(
-        JSON.stringify({ error: createError.message }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // ── 2. Verify caller's JWT ───────────────────────────────────────────────
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return jsonResponse({ error: 'Missing or invalid Authorization header' }, 401);
     }
 
-    // Generate unique judge_code
-    const { data: existingJudges } = await supabaseAdmin
+    const token = authHeader.slice(7); // strip "Bearer "
+    const {
+      data: { user: callerUser },
+      error: jwtError,
+    } = await supabaseAdmin.auth.getUser(token);
+
+    if (jwtError || !callerUser) {
+      return jsonResponse({ error: 'Unauthorized: invalid or expired token' }, 401);
+    }
+
+    // ── 3. Verify caller is an active admin ──────────────────────────────────
+    const { data: adminRow, error: adminErr } = await supabaseAdmin
+      .from('admin_users')
+      .select('is_active')
+      .eq('id', callerUser.id)
+      .maybeSingle();
+
+    if (adminErr || !adminRow?.is_active) {
+      return jsonResponse({ error: 'Forbidden: active admin access required' }, 403);
+    }
+
+    // ── 4. Parse and validate request body ──────────────────────────────────
+    let body: { name?: string; email?: string; isAnchor?: boolean };
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    }
+
+    const cleanName = (body.name ?? '').trim();
+    const cleanEmail = (body.email ?? '').trim().toLowerCase();
+    const isAnchor = body.isAnchor === true;
+
+    if (!cleanName) {
+      return jsonResponse({ error: 'Judge full name is required' }, 400);
+    }
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return jsonResponse({ error: 'A valid email address is required' }, 400);
+    }
+
+    // ── 5. Duplicate-email check (idempotency guard) ─────────────────────────
+    // Check if a judge row with this email already exists.
+    const { data: existingJudge } = await supabaseAdmin
+      .from('judges')
+      .select('id, judge_code, name, email, is_active, auth_user_id')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (existingJudge) {
+      // Return the existing record without creating anything new.
+      return jsonResponse({
+        success: true,
+        alreadyExists: true,
+        judge: {
+          id: existingJudge.id,
+          name: existingJudge.name,
+          email: existingJudge.email,
+          code: existingJudge.judge_code,
+          isAnchor,
+          isActive: existingJudge.is_active,
+          authLinked: existingJudge.auth_user_id !== null,
+        },
+        message: 'A judge with this email already exists. No new account was created.',
+      });
+    }
+
+    // ── 6. Check if an Auth user with this email already exists ─────────────
+    // This catches cases where the judge's Auth account exists but the
+    // judge row does not (partial failure recovery).
+    const { data: existingAuthList } = await supabaseAdmin.auth.admin.listUsers();
+    const existingAuthUser = existingAuthList?.users?.find(
+      (u) => u.email === cleanEmail
+    );
+
+    let authUserId: string;
+    let tempPassword: string | null = null;
+    let authCreated = false;
+
+    if (existingAuthUser) {
+      // Auth user already exists — link to a new judge row without re-creating
+      authUserId = existingAuthUser.id;
+    } else {
+      // ── 7. Create Supabase Auth user ─────────────────────────────────────
+      tempPassword = `Spotlight${Math.floor(1000 + Math.random() * 9000)}!`;
+
+      const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: cleanEmail,
+        password: tempPassword,
+        email_confirm: true, // pre-confirm so judge can log in immediately
+        user_metadata: { name: cleanName, role: 'judge' },
+      });
+
+      if (createError || !authData?.user) {
+        return jsonResponse({
+          error: createError?.message ?? 'Failed to create Auth user',
+        }, 400);
+      }
+
+      authUserId = authData.user.id;
+      authCreated = true;
+    }
+
+    // ── 8. Generate unique judge_code ────────────────────────────────────────
+    const { data: existingCodes } = await supabaseAdmin
       .from('judges')
       .select('judge_code');
 
     let maxNum = 0;
-    if (existingJudges) {
-      for (const j of existingJudges) {
-        if (j.judge_code && j.judge_code.startsWith('JUDGE-')) {
-          const num = parseInt(j.judge_code.replace('JUDGE-', ''), 10);
-          if (!isNaN(num) && num > maxNum) maxNum = num;
+    if (existingCodes) {
+      for (const row of existingCodes) {
+        if (row.judge_code?.startsWith('JUDGE-')) {
+          const n = parseInt(row.judge_code.replace('JUDGE-', ''), 10);
+          if (!isNaN(n) && n > maxNum) maxNum = n;
         }
       }
     }
-    const nextCode = `JUDGE-${String(maxNum + 1).padStart(2, '0')}`;
+    const judgeCode = `JUDGE-${String(maxNum + 1).padStart(2, '0')}`;
 
-    // Insert judge record linked to auth_user_id
+    // ── 9. Insert judge row, linked to auth_user_id ──────────────────────────
     const { data: judgeRow, error: judgeError } = await supabaseAdmin
       .from('judges')
       .insert({
         name: cleanName,
         email: cleanEmail,
-        judge_code: nextCode,
-        is_anchor: !!isAnchor,
+        judge_code: judgeCode,
+        is_anchor: isAnchor,
         is_active: true,
-        auth_user_id: authData.user.id,
+        auth_user_id: authUserId,
       })
-      .select()
+      .select('id, name, email, judge_code, is_anchor, is_active, auth_user_id, created_at')
       .single();
 
-    if (judgeError) {
-      // Rollback auth user
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-      return new Response(
-        JSON.stringify({ error: judgeError.message }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (judgeError || !judgeRow) {
+      // ── 10. Atomic rollback: delete Auth user if we just created it ─────
+      if (authCreated) {
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+      }
+      return jsonResponse({
+        error: judgeError?.message ?? 'Failed to create judge record',
+      }, 400);
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        judge: judgeRow,
-        tempPassword,
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (err: any) {
-    return new Response(
-      JSON.stringify({ error: err?.message || 'Server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    // ── 11. Return safe judge information (never expose service-role key) ────
+    return jsonResponse({
+      success: true,
+      alreadyExists: false,
+      judge: {
+        id: judgeRow.id,
+        name: judgeRow.name,
+        email: judgeRow.email,
+        code: judgeRow.judge_code,
+        isAnchor: judgeRow.is_anchor,
+        isActive: judgeRow.is_active,
+        authLinked: true,
+        createdAt: judgeRow.created_at,
+      },
+      // tempPassword is provided ONLY on first creation.
+      // Admin must copy it immediately — it is not stored or retrievable later.
+      tempPassword: authCreated ? tempPassword : null,
+      authCreated,
+      message: authCreated
+        ? 'Judge account and login credentials created successfully.'
+        : 'Judge row created and linked to existing Auth account.',
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    return jsonResponse({ error: message }, 500);
   }
 });
