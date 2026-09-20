@@ -357,3 +357,14 @@ export interface LeaderboardState {
   lastCalculatedAt: string;
   isLive: boolean;
 }
+
+/* Unified Spotlight Identity (Phase 1) */
+export interface UserProfile {
+  id: string;
+  fullName: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+

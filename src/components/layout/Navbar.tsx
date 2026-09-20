@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
-import { Menu, X, Mic2, Ticket } from 'lucide-react';
+import { Menu, X, Mic2, Ticket, User } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const { user, profile } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -21,6 +23,8 @@ export const Navbar: React.FC = () => {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location]);
+
+  const userDisplayName = profile?.fullName || user?.user_metadata?.full_name || 'Account';
 
   return (
     <header
@@ -79,6 +83,15 @@ export const Navbar: React.FC = () => {
 
         {/* RIGHT: DESKTOP CTAS */}
         <div className="hidden lg:flex items-center space-x-4">
+          {user ? (
+            <Button href="/account" variant="secondary" size="sm" icon={<User className="w-3.5 h-3.5 text-amber-400" />}>
+              {userDisplayName}
+            </Button>
+          ) : (
+            <Button href="/login" variant="secondary" size="sm" icon={<User className="w-3.5 h-3.5 text-amber-400" />}>
+              Sign In
+            </Button>
+          )}
           <Button href="/ticket" variant="secondary" size="sm" icon={<Ticket className="w-3.5 h-3.5 text-amber-400" />}>
             Get Ticket
           </Button>
@@ -89,9 +102,15 @@ export const Navbar: React.FC = () => {
 
         {/* MOBILE MENU TOGGLE BUTTON */}
         <div className="flex items-center space-x-3 md:hidden">
-          <Button href="/ticket" variant="secondary" size="sm" className="px-2.5 text-xs">
-            ₹10 Ticket
-          </Button>
+          {user ? (
+            <Link to="/account" className="p-2 bg-[#12121A] border border-amber-400/50 text-amber-400 text-xs font-mono">
+              👤
+            </Link>
+          ) : (
+            <Link to="/login" className="p-2 bg-[#12121A] border border-[#27273A] text-zinc-300 text-xs font-mono">
+              Sign In
+            </Link>
+          )}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 text-zinc-300 hover:text-white bg-[#12121A] border border-[#27273A] focus:outline-none"
@@ -119,6 +138,14 @@ export const Navbar: React.FC = () => {
               >
                 Home
               </Link>
+              <Link
+                to={user ? "/account" : "/login"}
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-lg font-display font-bold text-amber-400 transition-colors uppercase flex items-center space-x-2"
+              >
+                <User className="w-4 h-4" />
+                <span>{user ? `Account (${userDisplayName})` : "Sign In / Register"}</span>
+              </Link>
               <a
                 href="/#about"
                 onClick={() => setMobileMenuOpen(false)}
@@ -132,20 +159,6 @@ export const Navbar: React.FC = () => {
                 className="text-lg font-display font-bold text-zinc-300 hover:text-amber-400 transition-colors uppercase"
               >
                 How It Works
-              </a>
-              <a
-                href="/#scoring"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-lg font-display font-bold text-zinc-300 hover:text-amber-400 transition-colors uppercase"
-              >
-                Scoring Formula
-              </a>
-              <a
-                href="/#tracks"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-lg font-display font-bold text-zinc-300 hover:text-amber-400 transition-colors uppercase"
-              >
-                Competition Tracks
               </a>
             </nav>
 
@@ -183,3 +196,4 @@ export const Navbar: React.FC = () => {
     </header>
   );
 };
+

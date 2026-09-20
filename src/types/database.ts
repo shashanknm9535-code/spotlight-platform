@@ -142,6 +142,26 @@ export interface AdminUserRow {
   updated_at: string;
 }
 
+export interface ProfileRow {
+  id: string;                 // matches auth.users.id
+  full_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProfileInsert {
+  id: string;
+  full_name?: string | null;
+  email?: string | null;
+  avatar_url?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type ProfileUpdate = Partial<ProfileInsert>;
+
 export interface EventLogRow {
   id: string;
   event_id: string;           // FK → events.id
@@ -396,6 +416,12 @@ export interface Database {
         Update: AdminUserUpdate;
         Relationships: [];
       };
+      profiles: {
+        Row: ProfileRow;
+        Insert: ProfileInsert;
+        Update: ProfileUpdate;
+        Relationships: [];
+      };
       event_logs: {
         Row: EventLogRow;
         Insert: EventLogInsert;
@@ -519,4 +545,5 @@ export type DbJudgeScore = Database['public']['Tables']['judge_scores']['Row'];
 export type DbTicket = Database['public']['Tables']['tickets']['Row'];
 export type DbAudienceVote = Database['public']['Tables']['audience_votes']['Row'];
 export type DbAdminUser = Database['public']['Tables']['admin_users']['Row'];
+export type DbProfile = Database['public']['Tables']['profiles']['Row'];
 export type DbEventLog = Database['public']['Tables']['event_logs']['Row'];
