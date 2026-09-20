@@ -313,18 +313,34 @@ export const getTicket = async (ticketCode: string): Promise<Ticket | null> => {
   }
 
   try {
+    // Primary secure lookup via SECURITY DEFINER presentation RPC
+    const { data: rpcData, error: rpcError } = await (supabase as any).rpc('get_ticket_by_code', {
+      p_ticket_code: normalized,
+    });
+
+    if (!rpcError && rpcData && rpcData.ticket_code) {
+      return {
+        id: rpcData.ticket_code,
+        qrValue: rpcData.ticket_code,
+        buyerName: rpcData.buyer_name,
+        buyerEmail: rpcData.buyer_email,
+        buyerPhone: rpcData.buyer_phone || '',
+        status: rpcData.payment_status === 'PAID' ? 'CONFIRMED' : 'PENDING',
+        createdAt: rpcData.created_at,
+      };
+    }
+
+    // Direct table query fallback for authenticated ticket owner / admin session
     const { data, error } = await supabase
       .from('tickets')
-      .select('id, ticket_code, user_id, buyer_name, buyer_email, buyer_phone, payment_status, created_at')
+      .select('id, ticket_code, user_id, event_id, buyer_name, buyer_email, buyer_phone, payment_status, created_at')
       .eq('ticket_code', normalized)
       .eq('payment_status', 'PAID')
       .maybeSingle();
 
-    if (error) {
-      logSupabaseError('TicketService', 'getTicket', error);
+    if (error || !data) {
       return null;
     }
-    if (!data) return null;
 
     const row = data as DbTicket;
     return {
@@ -336,6 +352,7 @@ export const getTicket = async (ticketCode: string): Promise<Ticket | null> => {
       status: row.payment_status === 'PAID' ? 'CONFIRMED' : 'PENDING',
       createdAt: row.created_at,
       userId: row.user_id || undefined,
+      eventId: row.event_id || undefined,
     };
   } catch (err) {
     logSupabaseError('TicketService', 'getTicket', err);
