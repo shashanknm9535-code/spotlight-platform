@@ -83,9 +83,12 @@ export const createAct = async (
   let lastError: any = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const actId = crypto.randomUUID();
     const code = generateActCode();
+    const now = new Date().toISOString();
 
     const actPayload: ActInsert = {
+      id: actId,
       act_code: code,
       category: formData.category === 'group' ? 'GROUP' : 'SOLO',
       title: perfType,
@@ -102,18 +105,20 @@ export const createAct = async (
       running_order: null,
     };
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('acts')
-      .insert(actPayload as any)
-      .select()
-      .single();
+      .insert(actPayload as any);
 
-    if (!error && data) {
-      return data as DbAct;
+    if (!error) {
+      return {
+        ...actPayload,
+        created_at: now,
+        updated_at: now,
+      } as DbAct;
     }
 
-    // Postgres unique constraint violation on act_code -> retry with new code
-    if (error && error.code === '23505' && error.message?.includes('act_code')) {
+    // Postgres unique constraint violation on act_code or id -> retry with new code & id
+    if (error && (error.code === '23505' || error.message?.includes('act_code'))) {
       console.warn(`[RegistrationService] Collision on act_code ${code}. Retrying (${attempt + 1}/${maxRetries})...`);
       lastError = error;
       continue;
@@ -124,7 +129,7 @@ export const createAct = async (
     break;
   }
 
-  throw new Error("We couldn't submit your registration. Please try again.");
+  throw new Error(lastError?.message || "We couldn't submit your registration. Please try again.");
 };
 
 /**
@@ -152,24 +157,33 @@ export const createActMembers = async (
 
   if (teamMembers.length === 0) return [];
 
+  const now = new Date().toISOString();
+
   const rowsToInsert: ActMemberInsert[] = teamMembers.map((m) => ({
+    id: crypto.randomUUID(),
     act_id: actId,
     name: m.name.trim(),
     department: m.department || null,
     year: m.year || null,
   }));
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('act_members')
-    .insert(rowsToInsert as any)
-    .select();
+    .insert(rowsToInsert as any);
 
-  if (error || !data) {
+  if (error) {
     console.error('[RegistrationService] Failed to insert act members:', error);
     throw new Error("We couldn't submit your registration team roster. Please try again.");
   }
 
-  return data as DbActMember[];
+  return rowsToInsert.map((r) => ({
+    id: r.id!,
+    act_id: r.act_id,
+    name: r.name,
+    department: r.department || null,
+    year: r.year || null,
+    created_at: now,
+  })) as DbActMember[];
 };
 
 /**
