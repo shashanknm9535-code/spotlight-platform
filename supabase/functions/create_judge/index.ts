@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -133,7 +134,10 @@ serve(async (req) => {
       authUserId = existingAuthUser.id;
     } else {
       // ── 7. Create Supabase Auth user ─────────────────────────────────────
-      tempPassword = `Spotlight${Math.floor(1000 + Math.random() * 9000)}!`;
+      const randomArray = new Uint32Array(1);
+      crypto.getRandomValues(randomArray);
+      const randomPin = 1000 + (randomArray[0] % 9000);
+      tempPassword = `Spotlight${randomPin}!`;
 
       const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email: cleanEmail,
