@@ -104,6 +104,7 @@ export interface Ticket {
   buyerPhone: string;
   status: TicketStatus;
   createdAt: string;
+  userId?: string;
 }
 
 export interface TicketOrder {

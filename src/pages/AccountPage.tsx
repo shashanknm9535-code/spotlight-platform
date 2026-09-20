@@ -1,13 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getUserTicket } from '../services/ticketService';
+import type { Ticket as TicketType } from '../types';
+import { TicketCard } from '../components/ticketing/TicketCard';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { User, LogOut, ShieldCheck, Mail, Calendar, Key, CheckCircle, Loader2 } from 'lucide-react';
+import { Ticket, LogOut, ShieldCheck, Mail, Calendar, Key, CheckCircle, Loader2, Sparkles } from 'lucide-react';
 
 export const AccountPage: React.FC = () => {
   const { user, profile, isLoading, signOut, isAdmin, judge } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
+  const [userTicket, setUserTicket] = useState<TicketType | null>(null);
+  const [ticketLoading, setTicketLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setTicketLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    getUserTicket(user.id).then((ticket) => {
+      if (isMounted) {
+        setUserTicket(ticket);
+        setTicketLoading(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
 
   // If loading, show styled spinner
   if (isLoading) {
@@ -149,7 +173,61 @@ export const AccountPage: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* MY SPOTLIGHT TICKET SECTION */}
+        <div className="bg-[#12121A] border border-[#27273A] p-6 sm:p-8 space-y-6 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-[#1E1E2C] pb-4">
+            <div className="flex items-center space-x-3">
+              <Ticket className="w-5 h-5 text-amber-400" />
+              <h2 className="text-xl font-display font-bold text-white uppercase tracking-wide">
+                MY SPOTLIGHT TICKET
+              </h2>
+            </div>
+            {userTicket && (
+              <Badge variant="gold" icon={<Sparkles className="w-3 h-3 text-amber-400" />}>
+                VALID PASS
+              </Badge>
+            )}
+          </div>
+
+          {ticketLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 text-amber-400 animate-spin mr-2" />
+              <span className="text-xs font-mono text-zinc-400">Loading ticket status...</span>
+            </div>
+          ) : userTicket ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono bg-[#181824] p-4 border border-[#222232]">
+                <div>
+                  <span className="block text-zinc-500">TICKET CODE</span>
+                  <span className="text-white font-bold">{userTicket.id}</span>
+                </div>
+                <div>
+                  <span className="block text-zinc-500">PRICE</span>
+                  <span className="text-amber-400 font-bold">₹10</span>
+                </div>
+                <div>
+                  <span className="block text-zinc-500">STATUS</span>
+                  <span className="text-emerald-400 font-bold">{userTicket.status}</span>
+                </div>
+              </div>
+
+              {/* Reused TicketCard Component for presentation */}
+              <TicketCard ticket={userTicket} ticketIndex={1} totalTickets={1} />
+            </div>
+          ) : (
+            <div className="text-center py-8 px-4 bg-[#181824] border border-[#222232] space-y-4">
+              <p className="text-sm font-sans text-zinc-300">
+                You don't have a Spotlight audience ticket yet.
+              </p>
+              <Button href="/ticket" variant="primary" size="md" icon={<Ticket className="w-4 h-4" />}>
+                Get Your ₹10 Ticket
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
+

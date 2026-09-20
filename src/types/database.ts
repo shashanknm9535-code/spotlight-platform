@@ -114,6 +114,7 @@ export interface JudgeScoreRow {
 export interface TicketRow {
   id: string;
   ticket_code: string;        // unique e.g. SPT-TKT-2026-0001
+  user_id?: string | null;    // FK → auth.users(id)
   buyer_name: string;
   buyer_email: string;
   buyer_phone: string | null;
@@ -271,6 +272,7 @@ export interface JudgeScoreInsert {
 export interface TicketInsert {
   id?: string;
   ticket_code: string;
+  user_id?: string | null;
   buyer_name: string;
   buyer_email: string;
   buyer_phone?: string | null;

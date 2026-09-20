@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { BuyerDetails, TicketOrder } from '../types';
-import { processMockPaymentAndCreateTickets, getTicket } from '../services/ticketService';
+import { processMockPaymentAndCreateTickets, getTicket, getUserTicket } from '../services/ticketService';
+import { useAuth } from '../context/AuthContext';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -8,12 +9,13 @@ import { QuantitySelector } from '../components/ticketing/QuantitySelector';
 import { OrderSummary } from '../components/ticketing/OrderSummary';
 import { PaymentModal } from '../components/ticketing/PaymentModal';
 import { TicketCard } from '../components/ticketing/TicketCard';
-import { Ticket, Sparkles, ArrowLeft, ArrowRight, CheckCircle2, ShieldCheck, Mail } from 'lucide-react';
+import { Ticket, Sparkles, ArrowLeft, ArrowRight, CheckCircle2, ShieldCheck, Mail, User, AlertCircle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 export const TicketPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const codeParam = searchParams.get('code') || searchParams.get('ticket');
+  const { user, profile, isLoading: authLoading } = useAuth();
 
   const [buyer, setBuyer] = useState<BuyerDetails>({
     name: '',
@@ -28,7 +30,47 @@ export const TicketPage: React.FC = () => {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [orderResult, setOrderResult] = useState<TicketOrder | null>(null);
   const [activeTicketTab, setActiveTicketTab] = useState(0);
+  const [hasExistingTicket, setHasExistingTicket] = useState<boolean>(false);
 
+  // Auto-prefill name and email when user is authenticated
+  useEffect(() => {
+    if (user) {
+      setBuyer((prev) => ({
+        ...prev,
+        name: profile?.fullName || user.user_metadata?.full_name || user.user_metadata?.name || prev.name,
+        email: profile?.email || user.email || prev.email,
+        quantity: 1, // Single ticket per user identity
+      }));
+    }
+  }, [user, profile]);
+
+  // Check if authenticated user already has an active ticket
+  useEffect(() => {
+    if (!user?.id || codeParam) return;
+
+    let isMounted = true;
+    getUserTicket(user.id).then((found) => {
+      if (found && isMounted) {
+        setHasExistingTicket(true);
+        setOrderResult({
+          id: `ORD-${found.id.slice(-6)}`,
+          paymentId: `PAY-${found.id.slice(-6)}`,
+          tickets: [found],
+          quantity: 1,
+          unitPrice: 10,
+          totalAmount: 10,
+          status: 'CONFIRMED',
+          createdAt: found.createdAt,
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id, codeParam]);
+
+  // Code search param lookup compatibility
   useEffect(() => {
     if (!codeParam) return;
     let isMounted = true;
@@ -78,6 +120,10 @@ export const TicketPage: React.FC = () => {
 
   const handleOpenPayment = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      setErrors({ auth: 'Authentication is required to purchase a ticket.' });
+      return;
+    }
     if (validateForm()) {
       setPaymentError(null);
       setShowPaymentModal(true);
@@ -88,7 +134,7 @@ export const TicketPage: React.FC = () => {
     setIsProcessing(true);
     setPaymentError(null);
     try {
-      const order = await processMockPaymentAndCreateTickets(buyer, simulateError);
+      const order = await processMockPaymentAndCreateTickets(buyer, user?.id || null, simulateError);
       setOrderResult(order);
       setShowPaymentModal(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -114,15 +160,17 @@ export const TicketPage: React.FC = () => {
               </div>
 
               <Badge variant="gold" icon={<Sparkles className="w-3.5 h-3.5" />}>
-                PAYMENT SUCCESSFUL
+                {hasExistingTicket ? 'ACTIVE TICKET FOUND' : 'PAYMENT SUCCESSFUL'}
               </Badge>
 
               <h1 className="text-4xl sm:text-6xl font-display font-black text-white uppercase tracking-tight mt-3 mb-2">
-                YOU'RE IN.
+                {hasExistingTicket ? 'YOU ALREADY HAVE A TICKET' : "YOU'RE IN."}
               </h1>
 
               <p className="text-base sm:text-lg text-zinc-300 font-sans max-w-md mx-auto leading-relaxed mb-6">
-                Your Spotlight ticket is ready. Show your QR pass at the venue entrance.
+                {hasExistingTicket
+                  ? 'Your active Spotlight ticket is linked to your account identity.'
+                  : 'Your Spotlight ticket is ready. Show your QR pass at the venue entrance.'}
               </p>
 
               {/* ORDER RECAP INFO */}
@@ -170,15 +218,18 @@ export const TicketPage: React.FC = () => {
               totalTickets={orderResult.tickets.length}
             />
 
-            {/* NOTICE & HOME ACTION */}
+            {/* NOTICE & ACCOUNT ACTION */}
             <div className="p-4 bg-[#0E0E16] border border-[#1E1E2C] text-center space-y-4">
               <p className="text-xs font-mono text-zinc-400 flex items-center justify-center gap-2">
                 <Mail className="w-4 h-4 text-amber-400" />
-                <span>Ticket pass details will be sent to <strong>{buyer.email}</strong>.</span>
+                <span>Ticket pass is linked to <strong>{buyer.email}</strong>.</span>
               </p>
 
-              <div className="flex justify-center pt-2">
-                <Button href="/" variant="primary" size="lg" icon={<ArrowLeft className="w-4 h-4" />}>
+              <div className="flex justify-center gap-4 pt-2">
+                <Button href="/account" variant="primary" size="lg" icon={<User className="w-4 h-4" />}>
+                  View in My Account
+                </Button>
+                <Button href="/" variant="secondary" size="lg" icon={<ArrowLeft className="w-4 h-4" />}>
                   Back to Spotlight
                 </Button>
               </div>
@@ -208,9 +259,9 @@ export const TicketPage: React.FC = () => {
               </div>
             </div>
 
-            {/* 2-COLUMN RESPONSIVE LAYOUT (LEFT: INFO & FEATURES, RIGHT: PURCHASE & SUMMARY) */}
+            {/* 2-COLUMN RESPONSIVE LAYOUT */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start max-w-6xl mx-auto">
-              {/* LEFT COLUMN: EVENT DETAILS & BUYER FORM (7 COLS) */}
+              {/* LEFT COLUMN: BUYER FORM & AUTH GATE */}
               <div className="lg:col-span-7 space-y-8">
                 <form onSubmit={handleOpenPayment} className="p-6 sm:p-8 bg-[#0E0E16] border border-[#1E1E2C] space-y-6">
                   <div className="flex items-center space-x-3 pb-4 border-b border-[#1C1C2A]">
@@ -220,81 +271,101 @@ export const TicketPage: React.FC = () => {
                         BUYER CONTACT DETAILS
                       </h3>
                       <span className="text-xs font-mono text-zinc-400">
-                        No login required. Your ticket is your entry & voting key.
+                        {user ? 'Linked to your Google identity.' : 'Sign in required to purchase.'}
                       </span>
                     </div>
                   </div>
 
-                  {/* QUANTITY SELECTOR */}
-                  <QuantitySelector
-                    quantity={buyer.quantity}
-                    onChange={(qty) => setBuyer((prev) => ({ ...prev, quantity: qty }))}
-                  />
+                  {/* AUTHENTICATION GATE PROMPT IF NOT LOGGED IN */}
+                  {!authLoading && !user ? (
+                    <div className="p-6 bg-[#141420] border border-amber-400/40 text-center space-y-4">
+                      <ShieldCheck className="w-10 h-10 text-amber-400 mx-auto" />
+                      <div>
+                        <h4 className="text-base font-display font-bold text-white uppercase">
+                          GOOGLE SIGN-IN REQUIRED
+                        </h4>
+                        <p className="text-xs font-sans text-zinc-400 mt-1">
+                          Continue with Google to buy your Spotlight ticket. Your ticket will be safely stored in your account.
+                        </p>
+                      </div>
+                      <Button href="/login" variant="primary" size="md" fullWidth icon={<User className="w-4 h-4" />}>
+                        Continue with Google
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      {/* QUANTITY SELECTOR (Single ticket per identity) */}
+                      <QuantitySelector
+                        quantity={buyer.quantity}
+                        onChange={(qty) => setBuyer((prev) => ({ ...prev, quantity: qty }))}
+                      />
 
-                  {/* FULL NAME */}
-                  <div>
-                    <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
-                      Full Name <span className="text-amber-400">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={buyer.name}
-                      onChange={(e) => setBuyer((prev) => ({ ...prev, name: e.target.value }))}
-                      placeholder="e.g. Jordan Smith"
-                      className={`w-full px-4 py-3 bg-[#141420] border text-white font-sans text-sm focus:outline-none focus:border-amber-400 transition-colors ${
-                        errors.name ? 'border-red-500' : 'border-[#27273C]'
-                      }`}
-                    />
-                    {errors.name && <p className="mt-1.5 text-xs text-red-400 font-mono">{errors.name}</p>}
-                  </div>
+                      {/* FULL NAME */}
+                      <div>
+                        <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
+                          Full Name <span className="text-amber-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={buyer.name}
+                          onChange={(e) => setBuyer((prev) => ({ ...prev, name: e.target.value }))}
+                          placeholder="e.g. Jordan Smith"
+                          className={`w-full px-4 py-3 bg-[#141420] border text-white font-sans text-sm focus:outline-none focus:border-amber-400 transition-colors ${
+                            errors.name ? 'border-red-500' : 'border-[#27273C]'
+                          }`}
+                        />
+                        {errors.name && <p className="mt-1.5 text-xs text-red-400 font-mono">{errors.name}</p>}
+                      </div>
 
-                  {/* EMAIL */}
-                  <div>
-                    <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
-                      Email Address <span className="text-amber-400">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      value={buyer.email}
-                      onChange={(e) => setBuyer((prev) => ({ ...prev, email: e.target.value }))}
-                      placeholder="jordan.smith@student.edu"
-                      className={`w-full px-4 py-3 bg-[#141420] border text-white font-sans text-sm focus:outline-none focus:border-amber-400 transition-colors ${
-                        errors.email ? 'border-red-500' : 'border-[#27273C]'
-                      }`}
-                    />
-                    {errors.email && <p className="mt-1.5 text-xs text-red-400 font-mono">{errors.email}</p>}
-                  </div>
+                      {/* EMAIL */}
+                      <div>
+                        <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
+                          Email Address <span className="text-amber-400">*</span>
+                        </label>
+                        <input
+                          type="email"
+                          value={buyer.email}
+                          onChange={(e) => setBuyer((prev) => ({ ...prev, email: e.target.value }))}
+                          placeholder="jordan.smith@student.edu"
+                          className={`w-full px-4 py-3 bg-[#141420] border text-white font-sans text-sm focus:outline-none focus:border-amber-400 transition-colors ${
+                            errors.email ? 'border-red-500' : 'border-[#27273C]'
+                          }`}
+                        />
+                        {errors.email && <p className="mt-1.5 text-xs text-red-400 font-mono">{errors.email}</p>}
+                      </div>
 
-                  {/* PHONE */}
-                  <div>
-                    <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
-                      Phone Number <span className="text-amber-400">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      value={buyer.phone}
-                      onChange={(e) => setBuyer((prev) => ({ ...prev, phone: e.target.value }))}
-                      placeholder="e.g. +91 98765 43210"
-                      className={`w-full px-4 py-3 bg-[#141420] border text-white font-sans text-sm focus:outline-none focus:border-amber-400 transition-colors ${
-                        errors.phone ? 'border-red-500' : 'border-[#27273C]'
-                      }`}
-                    />
-                    {errors.phone && <p className="mt-1.5 text-xs text-red-400 font-mono">{errors.phone}</p>}
-                  </div>
+                      {/* PHONE */}
+                      <div>
+                        <label className="block text-xs font-mono font-bold text-zinc-300 uppercase mb-2">
+                          Phone Number <span className="text-amber-400">*</span>
+                        </label>
+                        <input
+                          type="tel"
+                          value={buyer.phone}
+                          onChange={(e) => setBuyer((prev) => ({ ...prev, phone: e.target.value }))}
+                          placeholder="e.g. +91 98765 43210"
+                          className={`w-full px-4 py-3 bg-[#141420] border text-white font-sans text-sm focus:outline-none focus:border-amber-400 transition-colors ${
+                            errors.phone ? 'border-red-500' : 'border-[#27273C]'
+                          }`}
+                        />
+                        {errors.phone && <p className="mt-1.5 text-xs text-red-400 font-mono">{errors.phone}</p>}
+                      </div>
 
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="lg"
-                    fullWidth
-                    icon={<ArrowRight className="w-5 h-5" />}
-                  >
-                    Continue to Payment (₹{buyer.quantity * 10})
-                  </Button>
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        size="lg"
+                        fullWidth
+                        icon={<ArrowRight className="w-5 h-5" />}
+                      >
+                        Continue to Payment (₹{buyer.quantity * 10})
+                      </Button>
+                    </>
+                  )}
                 </form>
               </div>
 
-              {/* RIGHT COLUMN: ORDER SUMMARY & INCLUSIONS (5 COLS) */}
+              {/* RIGHT COLUMN: ORDER SUMMARY */}
               <div className="lg:col-span-5">
                 <OrderSummary quantity={buyer.quantity} />
               </div>
@@ -316,3 +387,4 @@ export const TicketPage: React.FC = () => {
     </main>
   );
 };
+

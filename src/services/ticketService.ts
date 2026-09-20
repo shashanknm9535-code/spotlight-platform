@@ -122,8 +122,58 @@ const createSingleTicketRecord = async (
  * Simulates payment gateway processing and creates real ticket records in Supabase
  * when VITE_USE_SUPABASE=true, or uses mock data when VITE_USE_SUPABASE=false.
  */
+// Local mock store for VITE_USE_SUPABASE=false
+const MOCK_USER_TICKETS = new Map<string, Ticket>();
+
+/**
+ * Retrieves an active ticket owned by a specific authenticated user.
+ */
+export const getUserTicket = async (userId: string): Promise<Ticket | null> => {
+  if (!userId) return null;
+
+  if (!isSupabaseEnabled || !supabase) {
+    return MOCK_USER_TICKETS.get(userId) || null;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('id, ticket_code, user_id, buyer_name, buyer_email, buyer_phone, payment_status, created_at')
+      .eq('user_id', userId)
+      .eq('payment_status', 'PAID')
+      .maybeSingle();
+
+    if (error) {
+      logSupabaseError('TicketService', 'getUserTicket', error);
+      return null;
+    }
+    if (!data) return null;
+
+    const row = data as DbTicket;
+    return {
+      id: row.ticket_code,
+      qrValue: row.ticket_code,
+      buyerName: row.buyer_name,
+      buyerEmail: row.buyer_email,
+      buyerPhone: row.buyer_phone || '',
+      status: row.payment_status === 'PAID' ? 'CONFIRMED' : 'PENDING',
+      createdAt: row.created_at,
+      userId: row.user_id || undefined,
+    };
+  } catch (err) {
+    logSupabaseError('TicketService', 'getUserTicket', err);
+    return null;
+  }
+};
+
+/**
+ * Ticket order processing service.
+ * Simulates payment gateway processing and creates real ticket records in Supabase
+ * linked to the authenticated user's ID.
+ */
 export const processMockPaymentAndCreateTickets = async (
   buyer: BuyerDetails,
+  userId?: string | null,
   shouldFail: boolean = false
 ): Promise<TicketOrder> => {
   // Simulate payment processing delay (1200ms)
@@ -139,6 +189,10 @@ export const processMockPaymentAndCreateTickets = async (
 
   // ── MOCK MODE FALLBACK ──────────────────────────────────────────────────────
   if (!isSupabaseEnabled || !supabase) {
+    if (userId && MOCK_USER_TICKETS.has(userId)) {
+      throw new Error('You already have an active Spotlight ticket.');
+    }
+
     const orderRandom = Math.floor(1000 + Math.random() * 9000);
     const payRandom = Math.floor(1000 + Math.random() * 9000);
     const orderId = `SPT-ORD-2026-${orderRandom}`;
@@ -147,7 +201,7 @@ export const processMockPaymentAndCreateTickets = async (
 
     const tickets: Ticket[] = Array.from({ length: buyer.quantity }, (_, i) => {
       const tktCode = generateTicketCode();
-      return {
+      const tkt: Ticket = {
         id: tktCode,
         qrValue: tktCode,
         buyerName: buyer.name,
@@ -155,7 +209,12 @@ export const processMockPaymentAndCreateTickets = async (
         buyerPhone: buyer.phone,
         status: 'CONFIRMED',
         createdAt: now,
+        userId: userId || undefined,
       };
+      if (userId && i === 0) {
+        MOCK_USER_TICKETS.set(userId, tkt);
+      }
+      return tkt;
     });
 
     return {
@@ -178,11 +237,15 @@ export const processMockPaymentAndCreateTickets = async (
       p_buyer_phone: buyer.phone.trim(),
       p_quantity: buyer.quantity,
       p_payment_method: 'upi',
+      p_user_id: userId || null,
     });
 
     if (error || !data || !data.success) {
       logSupabaseError('TicketService', 'purchase_tickets_atomic', error);
       const errMsg = error?.hint || error?.message || 'Ticket creation failed.';
+      if (errMsg.includes('ALREADY_HAS_TICKET')) {
+        throw new Error('You already have an active Spotlight ticket linked to your account.');
+      }
       if (errMsg.includes('CAPACITY_EXCEEDED')) {
         throw new Error('Tickets are currently sold out or remaining capacity is insufficient.');
       }
@@ -204,13 +267,14 @@ export const processMockPaymentAndCreateTickets = async (
       buyerPhone: buyer.phone,
       status: 'CONFIRMED',
       createdAt: new Date().toISOString(),
+      userId: userId || undefined,
     }));
 
     return {
       id: res.order_code,
       paymentId: 'MOCK-PAY-' + res.order_code,
       tickets,
-      quantity: buyer.quantity,
+      quantity: res.tickets.length,
       unitPrice: TICKET_PRICE,
       totalAmount: res.total_amount,
       status: 'CONFIRMED',
@@ -246,7 +310,7 @@ export const getTicket = async (ticketCode: string): Promise<Ticket | null> => {
   try {
     const { data, error } = await supabase
       .from('tickets')
-      .select('id, ticket_code, buyer_name, buyer_email, buyer_phone, payment_status, created_at')
+      .select('id, ticket_code, user_id, buyer_name, buyer_email, buyer_phone, payment_status, created_at')
       .eq('ticket_code', normalized)
       .eq('payment_status', 'PAID')
       .maybeSingle();
@@ -266,6 +330,7 @@ export const getTicket = async (ticketCode: string): Promise<Ticket | null> => {
       buyerPhone: row.buyer_phone || '',
       status: row.payment_status === 'PAID' ? 'CONFIRMED' : 'PENDING',
       createdAt: row.created_at,
+      userId: row.user_id || undefined,
     };
   } catch (err) {
     logSupabaseError('TicketService', 'getTicket', err);
