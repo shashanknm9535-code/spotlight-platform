@@ -462,3 +462,42 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.link_volunteer_google_identity() TO authenticated;
+
+-- ─── 8. ADMIN SET ENTRY SCANNING GATE RPC ──────────────────────────────────
+CREATE OR REPLACE FUNCTION public.admin_set_entry_scanning(p_open BOOLEAN)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_event_id UUID;
+BEGIN
+  IF NOT is_active_admin() THEN
+    RAISE EXCEPTION 'UNAUTHORIZED' USING HINT = 'Only active admins can modify entry gate state.';
+  END IF;
+
+  SELECT id INTO v_event_id
+  FROM public.events
+  ORDER BY (status = 'LIVE') DESC, created_at DESC
+  LIMIT 1;
+
+  IF v_event_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'No active event found.');
+  END IF;
+
+  UPDATE public.events
+  SET entry_scanning_open = p_open,
+      updated_at = now()
+  WHERE id = v_event_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'event_id', v_event_id,
+    'scanning_open', p_open
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_set_entry_scanning(BOOLEAN) TO authenticated;
+

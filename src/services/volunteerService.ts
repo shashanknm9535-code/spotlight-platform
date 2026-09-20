@@ -313,6 +313,16 @@ export const toggleEntryScanning = async (open: boolean): Promise<boolean> => {
   }
 
   try {
+    // 1. Primary path: SECURITY DEFINER RPC admin_set_entry_scanning
+    const { data: rpcData, error: rpcError } = await (supabase as any).rpc('admin_set_entry_scanning', {
+      p_open: open,
+    });
+
+    if (!rpcError && rpcData && rpcData.success === true) {
+      return true;
+    }
+
+    // 2. Fallback path: Direct events update with explicit row count check
     const { data: latestEvent } = await (supabase as any)
       .from('events')
       .select('id')
@@ -322,13 +332,14 @@ export const toggleEntryScanning = async (open: boolean): Promise<boolean> => {
 
     if (!latestEvent?.id) return false;
 
-    const { error } = await (supabase as any)
+    const { data: updatedRows, error } = await (supabase as any)
       .from('events')
       .update({ entry_scanning_open: open, updated_at: new Date().toISOString() })
-      .eq('id', latestEvent.id);
+      .eq('id', latestEvent.id)
+      .select('id');
 
-    if (error) {
-      logSupabaseError('VolunteerService', 'toggleEntryScanning', error);
+    if (error || !updatedRows || updatedRows.length === 0) {
+      logSupabaseError('VolunteerService', 'toggleEntryScanning', error || rpcError);
       return false;
     }
     return true;
