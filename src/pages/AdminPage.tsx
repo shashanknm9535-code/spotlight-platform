@@ -60,8 +60,7 @@ export const AdminPage: React.FC = () => {
     totalVotesReceived: 0,
   });
 
-  const currentAct = runningOrder.find((a) => a.id === liveState.currentActId)
-    || runningOrder[0]
+  const currentAct = (liveState.currentActId ? runningOrder.find((a) => a.id === liveState.currentActId) || null : null)
     || (!isSupabaseEnabled ? MOCK_ACTS[0] : null);
 
   // Initial Auth Check for Supabase

@@ -6,7 +6,7 @@ import { Radio, Play, Square, Pause, RotateCcw, FastForward, AlertTriangle, X } 
 
 export interface LiveEventTabProps {
   liveState: LiveEventState;
-  currentAct: Act;
+  currentAct: Act | null;
   onUpdateState: (newState: Partial<LiveEventState>) => void;
   onNextAct: () => void;
 }
@@ -68,15 +68,25 @@ export const LiveEventTab: React.FC<LiveEventTabProps> = ({
         {/* ACTIVE ACT & VOTES RECAP */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
           <div className="p-4 bg-[#141420] border border-[#27273C]">
-            <span className="text-zinc-500 block">STAGE SLOT #{currentAct.slotNumber}</span>
-            <span className="text-lg font-bold text-white uppercase block">{currentAct.title}</span>
-            <span className="text-amber-400 block">{currentAct.performerName}</span>
+            {currentAct ? (
+              <>
+                <span className="text-zinc-500 block">STAGE SLOT #{currentAct.slotNumber}</span>
+                <span className="text-lg font-bold text-white uppercase block">{currentAct.title}</span>
+                <span className="text-amber-400 block">{currentAct.performerName}</span>
+              </>
+            ) : (
+              <>
+                <span className="text-zinc-500 block">STAGE SLOT</span>
+                <span className="text-lg font-bold text-zinc-400 uppercase block">NO ACTIVE ACT</span>
+                <span className="text-zinc-500 block">Waiting for organizer selection</span>
+              </>
+            )}
           </div>
 
           <div className="p-4 bg-[#141420] border border-[#27273C]">
             <span className="text-zinc-500 block">VOTING WINDOW</span>
             <span className={`text-lg font-bold block ${liveState.votingOpen ? 'text-emerald-400' : 'text-red-400'}`}>
-              {liveState.votingOpen ? 'OPEN (00:42)' : 'CLOSED'}
+              {liveState.votingOpen ? 'OPEN' : 'CLOSED'}
             </span>
             <span className="text-zinc-400 block">Audience Rating Active</span>
           </div>
@@ -87,6 +97,21 @@ export const LiveEventTab: React.FC<LiveEventTabProps> = ({
             <span className="text-zinc-400 block">Realtime Vote Tally</span>
           </div>
         </div>
+
+        {/* EMPTY STATE BANNER WHEN NO ACT IS CURRENTLY ACTIVE */}
+        {!currentAct && (
+          <div className="p-4 sm:p-5 bg-[#141420] border border-amber-400/30 text-center space-y-1.5">
+            <span className="text-amber-400 font-mono font-bold text-xs tracking-wider uppercase block">
+              NO ACT CURRENTLY ACTIVE
+            </span>
+            <p className="text-sm font-sans text-white font-medium">
+              No performer has been placed on stage yet.
+            </p>
+            <p className="text-xs font-mono text-zinc-400">
+              Set an approved act as the current act from Running Order to begin the live event.
+            </p>
+          </div>
+        )}
 
         {/* OPERATIONAL CONTROLS */}
         <div className="pt-4 border-t border-[#1C1C2A] space-y-3">
