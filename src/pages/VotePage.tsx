@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import { isSupabaseEnabled } from '../lib/supabase/client';
+
 export const VotePage: React.FC = () => {
   const [votingState, setVotingState] = useState<VotingState>('ticket_required');
   const [ticketInput, setTicketInput] = useState('');
@@ -42,7 +44,7 @@ export const VotePage: React.FC = () => {
   const [showScanner, setShowScanner] = useState(false);
   const [liveAct, setLiveAct] = useState<Act | null>(null);
 
-  const currentAct: Act = liveAct || MOCK_ACTS[activeActIndex] || MOCK_ACTS[0];
+  const currentAct: Act | null = liveAct || (!isSupabaseEnabled ? MOCK_ACTS[activeActIndex] || MOCK_ACTS[0] : null);
 
   // Fetch live voting state when ticket or act index changes
   useEffect(() => {
@@ -51,15 +53,13 @@ export const VotePage: React.FC = () => {
       try {
         const payload = await getCurrentVotingState(activeTicket || undefined);
         if (!isMounted) return;
-        if (payload.currentAct) {
-          setLiveAct(payload.currentAct);
-        }
+        setLiveAct(payload.currentAct);
         setIsVotingOpen(payload.votingOpen);
 
         if (activeTicket) {
           if (payload.hasVoted) {
             setVotingState('already_voted');
-          } else if (!payload.votingOpen) {
+          } else if (!payload.votingOpen || !payload.currentAct) {
             setVotingState('voting_closed');
           } else if (votingState !== 'submitting' && votingState !== 'voted') {
             setVotingState('voting_open');
@@ -87,10 +87,11 @@ export const VotePage: React.FC = () => {
         const normalized = idToValidate.trim().toUpperCase();
         setActiveTicket(normalized);
         const payload = await getCurrentVotingState(normalized);
-        if (payload.currentAct) {
-          setLiveAct(payload.currentAct);
-        }
-        if (payload.hasVoted || hasVotedForAct(normalized, payload.currentAct?.id || currentAct.id)) {
+        setLiveAct(payload.currentAct);
+
+        if (!payload.currentAct) {
+          setVotingState('voting_closed');
+        } else if (payload.hasVoted || hasVotedForAct(normalized, payload.currentAct.id)) {
           setVotingState('already_voted');
         } else if (!payload.votingOpen) {
           setVotingState('voting_closed');
@@ -110,6 +111,10 @@ export const VotePage: React.FC = () => {
   const handleSubmitVote = async () => {
     if (!activeTicket) {
       setVotingState('ticket_required');
+      return;
+    }
+    if (!currentAct) {
+      setVotingState('voting_closed');
       return;
     }
 
@@ -158,7 +163,7 @@ export const VotePage: React.FC = () => {
     setIsVotingOpen(!isVotingOpen);
     if (activeTicket) {
       if (!isVotingOpen) {
-        const voted = hasVotedForAct(activeTicket, currentAct.id);
+        const voted = currentAct ? hasVotedForAct(activeTicket, currentAct.id) : false;
         setVotingState(voted ? 'already_voted' : 'voting_open');
       } else {
         setVotingState('voting_closed');
@@ -326,7 +331,7 @@ export const VotePage: React.FC = () => {
         )}
 
         {/* 4. STATE: VOTING OPEN & SUBMITTING */}
-        {(votingState === 'voting_open' || votingState === 'submitting') && (
+        {(votingState === 'voting_open' || votingState === 'submitting') && currentAct && (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* LIVE COUNTDOWN BADGE */}
             <LiveTimerBadge
@@ -375,7 +380,7 @@ export const VotePage: React.FC = () => {
         )}
 
         {/* 5. STATE: VOTED CONFIRMATION */}
-        {votingState === 'voted' && (
+        {votingState === 'voted' && currentAct && (
           <div className="p-8 sm:p-10 bg-[#0E0E16] border border-amber-400/60 text-center space-y-6 animate-in fade-in duration-500">
             <div className="w-16 h-16 mx-auto bg-amber-400 text-black flex items-center justify-center shadow-[0_0_25px_rgba(250,204,21,0.4)]">
               <CheckCircle2 className="w-9 h-9 stroke-[2.5]" />
@@ -420,10 +425,10 @@ export const VotePage: React.FC = () => {
             </h2>
 
             <p className="text-sm text-zinc-300 font-sans max-w-sm mx-auto">
-              You have already cast your vote for <strong>{currentAct.title}</strong> (Act #{currentAct.slotNumber}).
+              You have already cast your vote for <strong>{currentAct?.title || 'this act'}</strong> {currentAct ? `(Act #${currentAct.slotNumber})` : ''}.
             </p>
 
-            {activeTicket && getVotedRating(activeTicket, currentAct.id) !== null && (
+            {activeTicket && currentAct && getVotedRating(activeTicket, currentAct.id) !== null && (
               <div className="p-3 bg-[#141420] border border-[#27273C] inline-block font-mono text-xs">
                 <span className="text-zinc-500 block">YOUR SUBMITTED RATING</span>
                 <span className="text-2xl font-display font-bold text-amber-400">
@@ -438,8 +443,8 @@ export const VotePage: React.FC = () => {
           </div>
         )}
 
-        {/* 7. STATE: VOTING CLOSED */}
-        {votingState === 'voting_closed' && (
+        {/* 7. STATE: VOTING CLOSED OR NO CURRENT ACT */}
+        {(votingState === 'voting_closed' || !currentAct) && votingState !== 'ticket_required' && (
           <div className="p-8 bg-[#0E0E16] border border-[#1E1E2C] text-center space-y-6 animate-in fade-in duration-300">
             <div className="w-14 h-14 mx-auto bg-[#141420] border border-[#27273C] text-zinc-500 flex items-center justify-center">
               <Clock className="w-7 h-7" />
@@ -452,16 +457,10 @@ export const VotePage: React.FC = () => {
             </h2>
 
             <p className="text-sm text-zinc-300 font-sans max-w-sm mx-auto">
-              The voting window for Act #{currentAct.slotNumber} has ended. The next act will begin shortly.
+              {currentAct
+                ? `The voting window for Act #${currentAct.slotNumber} has ended. The next act will begin shortly.`
+                : 'There is no act currently performing on stage. Voting will open when the next performance starts.'}
             </p>
-
-            <div className="p-4 bg-[#141420] border border-[#27273C] max-w-xs mx-auto font-mono text-xs">
-              <span className="text-amber-400 block font-bold">NEXT UP ON STAGE</span>
-              <span className="text-white">
-                Act #{(activeActIndex + 2 > MOCK_ACTS.length ? 1 : activeActIndex + 2)} —{' '}
-                {MOCK_ACTS[(activeActIndex + 1) % MOCK_ACTS.length].title}
-              </span>
-            </div>
           </div>
         )}
 
@@ -473,16 +472,18 @@ export const VotePage: React.FC = () => {
           />
         )}
 
-        {/* DEV CONTROLS OVERLAY FOR TESTING */}
-        <DevControlsPanel
-          onUseValidTicket={handleDevValidTicket}
-          onUseInvalidTicket={handleDevInvalidTicket}
-          onNextAct={handleDevNextAct}
-          onToggleVotingOpen={handleDevToggleOpen}
-          onResetVotes={handleDevResetVotes}
-          isVotingOpen={isVotingOpen}
-          activeActSlot={currentAct.slotNumber}
-        />
+        {/* DEV CONTROLS OVERLAY FOR TESTING (DEV ONLY) */}
+        {!import.meta.env.PROD && (
+          <DevControlsPanel
+            onUseValidTicket={handleDevValidTicket}
+            onUseInvalidTicket={handleDevInvalidTicket}
+            onNextAct={handleDevNextAct}
+            onToggleVotingOpen={handleDevToggleOpen}
+            onResetVotes={handleDevResetVotes}
+            isVotingOpen={isVotingOpen}
+            activeActSlot={currentAct?.slotNumber || 1}
+          />
+        )}
       </PageContainer>
     </main>
   );

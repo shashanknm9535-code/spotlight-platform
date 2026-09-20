@@ -9,6 +9,7 @@ import { VotePage } from './pages/VotePage';
 import { JudgePage } from './pages/JudgePage';
 import { AdminPage } from './pages/AdminPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
+import { StagePage } from './pages/StagePage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 export const App: React.FC = () => {
@@ -25,7 +26,7 @@ export const App: React.FC = () => {
             <Route path="/judge" element={<JudgePage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
-            <Route path="/stage" element={<PlaceholderPage />} />
+            <Route path="/stage" element={<StagePage />} />
             <Route path="*" element={<PlaceholderPage />} />
           </Routes>
         </div>

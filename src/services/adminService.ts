@@ -472,8 +472,9 @@ export const subscribeToEventState = (
   }
 
   try {
+    const channelId = `admin_event_state_changes_${Math.random().toString(36).slice(2, 9)}`;
     const channel = supabase
-      .channel('admin_event_state_changes')
+      .channel(channelId)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'events' },

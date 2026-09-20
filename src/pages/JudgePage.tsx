@@ -47,8 +47,12 @@ export const JudgePage: React.FC = () => {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [approvedActs, setApprovedActs] = useState<Act[]>([]);
 
-  const actsList = approvedActs.length > 0 ? approvedActs : MOCK_ACTS;
-  const currentAct: Act = actsList[activeActIndex] || actsList[0] || MOCK_ACTS[0];
+  const actsList = isSupabaseEnabled
+    ? approvedActs
+    : approvedActs.length > 0
+    ? approvedActs
+    : MOCK_ACTS;
+  const currentAct: Act | undefined = actsList[activeActIndex] || actsList[0];
 
   // Initial Auth Check & Data Load for Supabase
   useEffect(() => {
@@ -93,7 +97,7 @@ export const JudgePage: React.FC = () => {
 
   // Check if current judge has already scored current act
   useEffect(() => {
-    if (!judge) return;
+    if (!judge || !currentAct) return;
     let isMounted = true;
     const checkScore = async () => {
       try {
@@ -114,7 +118,7 @@ export const JudgePage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [judge, activeActIndex, currentAct.id]);
+  }, [judge, activeActIndex, currentAct?.id]);
 
   // Handle Judge Authentication
   const handleAuthenticate = async (codeToUse?: string) => {
@@ -167,7 +171,7 @@ export const JudgePage: React.FC = () => {
 
   // Handle Final Score Lock Submission
   const handleConfirmSubmit = async () => {
-    if (!judge) return;
+    if (!judge || !currentAct) return;
     setShowReviewModal(false);
     setJudgingState('submitting');
     setErrorMsg(null);
@@ -325,13 +329,23 @@ export const JudgePage: React.FC = () => {
         )}
 
         {/* 3. STATE: SCORING / LOCKED / ALREADY SCORED DASHBOARD */}
-        {judge && (judgingState === 'scoring' || judgingState === 'locked' || judgingState === 'already_scored') && (
+        {judge && !currentAct && (
+          <div className="max-w-md mx-auto p-10 bg-[#0E0E16] border border-[#1E1E2C] text-center space-y-4">
+            <Badge variant="gold">NO APPROVED ACTS</Badge>
+            <h2 className="text-xl font-display font-bold text-white uppercase">No Acts In Running Order</h2>
+            <p className="text-sm text-zinc-400 font-sans">
+              There are currently no approved acts added to the event running order for judging.
+            </p>
+          </div>
+        )}
+
+        {judge && currentAct && (judgingState === 'scoring' || judgingState === 'locked' || judgingState === 'already_scored') && (
           <div className="space-y-8 animate-in fade-in duration-300">
             {/* JUDGE HEADER BAR */}
             <JudgeHeader
               judge={judge}
               activeActSlot={currentAct.slotNumber}
-              totalActs={MOCK_ACTS.length}
+              totalActs={actsList.length}
               onLogout={() => {
                 setJudge(null);
                 setJudgingState('access');
@@ -383,7 +397,7 @@ export const JudgePage: React.FC = () => {
         )}
 
         {/* REVIEW CONFIRMATION MODAL */}
-        {showReviewModal && judge && (
+        {showReviewModal && judge && currentAct && (
           <ScoreReviewModal
             act={currentAct}
             creativity={creativity}
@@ -405,7 +419,7 @@ export const JudgePage: React.FC = () => {
             onPrevAct={handlePrevAct}
             onResetScores={resetMockScores}
             activeJudgeCode={judge?.code}
-            activeActSlot={currentAct.slotNumber}
+            activeActSlot={currentAct?.slotNumber || 1}
           />
         )}
       </PageContainer>

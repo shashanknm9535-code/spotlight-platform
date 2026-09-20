@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { BuyerDetails, TicketOrder } from '../types';
-import { processMockPaymentAndCreateTickets } from '../services/ticketService';
+import { processMockPaymentAndCreateTickets, getTicket } from '../services/ticketService';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -9,9 +9,12 @@ import { OrderSummary } from '../components/ticketing/OrderSummary';
 import { PaymentModal } from '../components/ticketing/PaymentModal';
 import { TicketCard } from '../components/ticketing/TicketCard';
 import { Ticket, Sparkles, ArrowLeft, ArrowRight, CheckCircle2, ShieldCheck, Mail } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 export const TicketPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const codeParam = searchParams.get('code') || searchParams.get('ticket');
+
   const [buyer, setBuyer] = useState<BuyerDetails>({
     name: '',
     email: '',
@@ -25,6 +28,36 @@ export const TicketPage: React.FC = () => {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [orderResult, setOrderResult] = useState<TicketOrder | null>(null);
   const [activeTicketTab, setActiveTicketTab] = useState(0);
+
+  useEffect(() => {
+    if (!codeParam) return;
+    let isMounted = true;
+    const fetchTicket = async () => {
+      const found = await getTicket(codeParam);
+      if (found && isMounted) {
+        setOrderResult({
+          id: `ORD-${found.id.slice(-6)}`,
+          paymentId: `PAY-${found.id.slice(-6)}`,
+          tickets: [found],
+          quantity: 1,
+          unitPrice: 10,
+          totalAmount: 10,
+          status: 'CONFIRMED',
+          createdAt: found.createdAt,
+        });
+        setBuyer({
+          name: found.buyerName,
+          email: found.buyerEmail,
+          phone: found.buyerPhone,
+          quantity: 1,
+        });
+      }
+    };
+    fetchTicket();
+    return () => {
+      isMounted = false;
+    };
+  }, [codeParam]);
 
   // Validate form fields before opening payment modal
   const validateForm = (): boolean => {
