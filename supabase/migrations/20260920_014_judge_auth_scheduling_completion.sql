@@ -10,11 +10,19 @@
 -- ─── 1. PREVENT DUPLICATE AUTH_USER_ID ON judges ────────────────
 -- Ensures retrying judge creation never creates two judge rows for
 -- the same Auth user. Edge Function checks email first, but this is
--- the DB-level safety net.
-
-ALTER TABLE public.judges
-  ADD CONSTRAINT IF NOT EXISTS judges_auth_user_id_unique
-  UNIQUE (auth_user_id);
+-- Idempotently add unique constraint on auth_user_id
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'judges_auth_user_id_unique'
+      AND conrelid = 'public.judges'::regclass
+  ) THEN
+    ALTER TABLE public.judges
+      ADD CONSTRAINT judges_auth_user_id_unique UNIQUE (auth_user_id);
+  END IF;
+END $$;
 
 -- ─── 2. JUDGES CAN READ THEIR OWN RECORD ─────────────────────────
 -- Required so judges can resolve their own identity on the /judge page

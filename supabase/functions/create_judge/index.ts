@@ -104,12 +104,25 @@ serve(async (req) => {
     }
 
     // ── 6. Check if an Auth user with this email already exists ─────────────
-    // This catches cases where the judge's Auth account exists but the
-    // judge row does not (partial failure recovery).
-    const { data: existingAuthList } = await supabaseAdmin.auth.admin.listUsers();
-    const existingAuthUser = existingAuthList?.users?.find(
-      (u) => u.email === cleanEmail
-    );
+    // Use paginated listUsers search to find the user reliably regardless of count.
+    let existingAuthUser = null;
+    let page = 1;
+    const perPage = 1000;
+    while (true) {
+      const { data: authList, error: listError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      if (listError || !authList?.users || authList.users.length === 0) {
+        break;
+      }
+      const found = authList.users.find((u) => u.email?.toLowerCase() === cleanEmail);
+      if (found) {
+        existingAuthUser = found;
+        break;
+      }
+      if (authList.users.length < perPage) {
+        break;
+      }
+      page++;
+    }
 
     let authUserId: string;
     let tempPassword: string | null = null;
@@ -139,43 +152,61 @@ serve(async (req) => {
       authCreated = true;
     }
 
-    // ── 8. Generate unique judge_code ────────────────────────────────────────
-    const { data: existingCodes } = await supabaseAdmin
-      .from('judges')
-      .select('judge_code');
+    // ── 8. Generate unique judge_code & insert judge row (with retry loop for race conditions) ──
+    let judgeRow = null;
+    let lastInsertError: string | null = null;
+    const maxRetries = 5;
 
-    let maxNum = 0;
-    if (existingCodes) {
-      for (const row of existingCodes) {
-        if (row.judge_code?.startsWith('JUDGE-')) {
-          const n = parseInt(row.judge_code.replace('JUDGE-', ''), 10);
-          if (!isNaN(n) && n > maxNum) maxNum = n;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const { data: existingCodes } = await supabaseAdmin
+        .from('judges')
+        .select('judge_code');
+
+      let maxNum = 0;
+      if (existingCodes) {
+        for (const row of existingCodes) {
+          if (row.judge_code?.startsWith('JUDGE-')) {
+            const n = parseInt(row.judge_code.replace('JUDGE-', ''), 10);
+            if (!isNaN(n) && n > maxNum) maxNum = n;
+          }
         }
       }
+      const judgeCode = `JUDGE-${String(maxNum + 1 + attempt).padStart(2, '0')}`;
+
+      // ── 9. Insert judge row, linked to auth_user_id ──────────────────────────
+      const { data: inserted, error: judgeError } = await supabaseAdmin
+        .from('judges')
+        .insert({
+          name: cleanName,
+          email: cleanEmail,
+          judge_code: judgeCode,
+          is_anchor: isAnchor,
+          is_active: true,
+          auth_user_id: authUserId,
+        })
+        .select('id, name, email, judge_code, is_anchor, is_active, auth_user_id, created_at')
+        .maybeSingle();
+
+      if (!judgeError && inserted) {
+        judgeRow = inserted;
+        break;
+      }
+
+      lastInsertError = judgeError?.message ?? 'Failed to insert judge row';
+
+      // If error is unique constraint on auth_user_id, don't retry code, stop immediately
+      if (lastInsertError.includes('judges_auth_user_id_unique') || lastInsertError.includes('auth_user_id')) {
+        break;
+      }
     }
-    const judgeCode = `JUDGE-${String(maxNum + 1).padStart(2, '0')}`;
 
-    // ── 9. Insert judge row, linked to auth_user_id ──────────────────────────
-    const { data: judgeRow, error: judgeError } = await supabaseAdmin
-      .from('judges')
-      .insert({
-        name: cleanName,
-        email: cleanEmail,
-        judge_code: judgeCode,
-        is_anchor: isAnchor,
-        is_active: true,
-        auth_user_id: authUserId,
-      })
-      .select('id, name, email, judge_code, is_anchor, is_active, auth_user_id, created_at')
-      .single();
-
-    if (judgeError || !judgeRow) {
+    if (!judgeRow) {
       // ── 10. Atomic rollback: delete Auth user if we just created it ─────
       if (authCreated) {
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
       }
       return jsonResponse({
-        error: judgeError?.message ?? 'Failed to create judge record',
+        error: lastInsertError ?? 'Failed to create judge record after retries',
       }, 400);
     }
 
