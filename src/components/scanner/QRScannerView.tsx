@@ -18,33 +18,62 @@ export const QRScannerView: React.FC<QRScannerViewProps> = ({
   const scannerRef = useRef<Html5QrcodeType | null>(null);
   const containerId = 'qr-reader-viewport';
   const isPausedRef = useRef(isPaused);
+  const isMountedRef = useRef<boolean>(true);
 
   useEffect(() => {
     isPausedRef.current = isPaused;
   }, [isPaused]);
 
+  const safeStopScanner = async () => {
+    if (scannerRef.current) {
+      const inst = scannerRef.current;
+      scannerRef.current = null;
+      try {
+        if (inst.isScanning) {
+          await inst.stop();
+        }
+        inst.clear();
+      } catch (err) {
+        console.warn('[QRScannerView] Cleanup stop/clear error ignored:', err);
+      }
+    }
+  };
+
   const startScanner = async () => {
+    if (!isMountedRef.current) return;
+
     setIsInitializing(true);
     setCameraError(null);
     setIsPermissionDenied(false);
 
     try {
-      // Dynamic import of html5-qrcode library so it is only loaded on camera start
+      // Clean up previous scanner instance safely
+      await safeStopScanner();
+
+      if (!isMountedRef.current) return;
+
+      // Dynamic import of html5-qrcode
       const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
 
-      // Clean up existing instance if present
-      if (scannerRef.current) {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop();
-        }
-        scannerRef.current.clear();
-        scannerRef.current = null;
+      if (!isMountedRef.current) return;
+
+      // Ensure DOM element exists before creating Html5Qrcode
+      const containerElem = document.getElementById(containerId);
+      if (!containerElem) {
+        console.warn('[QRScannerView] Container DOM element missing');
+        return;
       }
 
       const html5Qrcode = new Html5Qrcode(containerId, {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         verbose: false,
       });
+
+      if (!isMountedRef.current) {
+        html5Qrcode.clear();
+        return;
+      }
+
       scannerRef.current = html5Qrcode;
 
       const qrConfig = {
@@ -58,27 +87,34 @@ export const QRScannerView: React.FC<QRScannerViewProps> = ({
       };
 
       const onScan = (decodedText: string) => {
-        if (isPausedRef.current) return;
+        if (!isMountedRef.current || isPausedRef.current) return;
+        console.log('[QRScannerView] QR Code Detected:', decodedText);
         onScanSuccess(decodedText);
       };
 
-      // Try facingMode: "environment" (rear camera on mobile)
+      // Start with rear/environment camera
       await html5Qrcode.start(
         { facingMode: 'environment' },
         qrConfig,
         onScan,
-        () => {} // Ignore scan failure callbacks for frame-by-frame decoding
+        () => {} // Frame error callback (ignored)
       );
 
-      setIsInitializing(false);
+      if (isMountedRef.current) {
+        setIsInitializing(false);
+      } else {
+        await safeStopScanner();
+      }
     } catch (err: any) {
-      console.warn('[QRScannerView] Failed with facingMode environment, trying user/fallback:', err);
+      console.warn('[QRScannerView] Failed with facingMode environment, trying camera list fallback:', err);
+
+      if (!isMountedRef.current) return;
 
       try {
         const { Html5Qrcode } = await import('html5-qrcode');
-        // Fallback to any available video input
         const devices = await Html5Qrcode.getCameras();
-        if (devices && devices.length > 0) {
+
+        if (devices && devices.length > 0 && isMountedRef.current) {
           const cameraId = devices[0].id;
           if (scannerRef.current) {
             await scannerRef.current.start(
@@ -88,52 +124,52 @@ export const QRScannerView: React.FC<QRScannerViewProps> = ({
                 qrbox: { width: 220, height: 220 },
               },
               (decodedText: string) => {
-                if (isPausedRef.current) return;
+                if (!isMountedRef.current || isPausedRef.current) return;
+                console.log('[QRScannerView] QR Code Detected (Fallback):', decodedText);
                 onScanSuccess(decodedText);
               },
               () => {}
             );
-            setIsInitializing(false);
+            if (isMountedRef.current) {
+              setIsInitializing(false);
+            } else {
+              await safeStopScanner();
+            }
             return;
           }
         }
       } catch (fallbackErr: any) {
-        console.error('[QRScannerView] Camera access failed completely:', fallbackErr);
+        console.error('[QRScannerView] Camera fallback failed:', fallbackErr);
       }
+
+      if (!isMountedRef.current) return;
 
       setIsInitializing(false);
       const errMsg = err?.message || String(err);
       if (errMsg.toLowerCase().includes('permission') || errMsg.toLowerCase().includes('notallowederror')) {
         setIsPermissionDenied(true);
-        setCameraError('Camera permission denied. Please allow camera access in your browser settings.');
+        setCameraError('Camera permission denied. Please allow camera access in browser settings.');
       } else if (errMsg.toLowerCase().includes('notfounderror') || errMsg.toLowerCase().includes('no media')) {
         setCameraError('No camera device found on this system.');
       } else {
-        setCameraError(errMsg || 'Failed to initialize camera.');
+        setCameraError(errMsg || 'Failed to initialize camera scanner.');
       }
     }
   };
 
   useEffect(() => {
-    let mounted = true;
+    isMountedRef.current = true;
 
-    // Small delay to ensure DOM container element is ready
     const timer = setTimeout(() => {
-      if (mounted) {
+      if (isMountedRef.current) {
         startScanner();
       }
     }, 100);
 
     return () => {
-      mounted = false;
+      isMountedRef.current = false;
       clearTimeout(timer);
-      if (scannerRef.current) {
-        if (scannerRef.current.isScanning) {
-          scannerRef.current.stop().catch((e) => console.warn('Error stopping scanner:', e));
-        }
-        scannerRef.current.clear();
-        scannerRef.current = null;
-      }
+      safeStopScanner();
     };
   }, []);
 
@@ -147,7 +183,7 @@ export const QRScannerView: React.FC<QRScannerViewProps> = ({
         {isInitializing && (
           <div className="absolute inset-0 z-20 bg-[#08080C] flex flex-col items-center justify-center p-6 space-y-3">
             <RefreshCw className="w-8 h-8 text-amber-400 animate-spin" />
-            <p className="text-xs font-mono text-zinc-400 tracking-wider">REQUESTING CAMERA PERMISSION...</p>
+            <p className="text-xs font-mono text-zinc-400 tracking-wider">INITIALIZING CAMERA...</p>
           </div>
         )}
 
@@ -177,7 +213,7 @@ export const QRScannerView: React.FC<QRScannerViewProps> = ({
           </div>
         )}
 
-        {/* SCANNER OVERLAY / TARGET FRAME (when active) */}
+        {/* SCANNER OVERLAY / TARGET FRAME */}
         {!isInitializing && !cameraError && (
           <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-between p-4">
             {/* Top instruction badge */}
