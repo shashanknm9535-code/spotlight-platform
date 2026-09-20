@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getUserTicket } from '../services/ticketService';
+import { getUserTicket, sendTicketEmail, getEmailDeliveryStatus, type EmailDeliveryStatus } from '../services/ticketService';
 import type { Ticket as TicketType } from '../types';
 import { TicketCard } from '../components/ticketing/TicketCard';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { Ticket, LogOut, ShieldCheck, Mail, Calendar, Key, CheckCircle, Loader2, Sparkles } from 'lucide-react';
+import { Ticket, LogOut, ShieldCheck, Mail, Calendar, Key, CheckCircle, Loader2, Sparkles, Send, CheckCircle2 } from 'lucide-react';
 
 export const AccountPage: React.FC = () => {
   const { user, profile, isLoading, signOut, isAdmin, judge } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
   const [userTicket, setUserTicket] = useState<TicketType | null>(null);
   const [ticketLoading, setTicketLoading] = useState<boolean>(true);
+  const [emailSending, setEmailSending] = useState<boolean>(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [emailDelivery, setEmailDelivery] = useState<EmailDeliveryStatus | null>(null);
 
   useEffect(() => {
     if (!user?.id) {
@@ -25,6 +28,11 @@ export const AccountPage: React.FC = () => {
       if (isMounted) {
         setUserTicket(ticket);
         setTicketLoading(false);
+        if (ticket?.id) {
+          getEmailDeliveryStatus(ticket.id).then((status) => {
+            if (isMounted) setEmailDelivery(status);
+          });
+        }
       }
     });
 
@@ -32,6 +40,7 @@ export const AccountPage: React.FC = () => {
       isMounted = false;
     };
   }, [user?.id]);
+
 
   // If loading, show styled spinner
   if (isLoading) {
@@ -67,6 +76,22 @@ export const AccountPage: React.FC = () => {
         day: 'numeric',
       })
     : 'Active Session';
+
+  const handleResendEmail = async () => {
+    if (!userTicket?.id) return;
+    setEmailSending(true);
+    setResendMessage(null);
+    try {
+      const res = await sendTicketEmail(userTicket.id, true);
+      setResendMessage(res.message || (res.success ? 'Ticket pass emailed!' : 'Email delivery failed.'));
+      const updatedStatus = await getEmailDeliveryStatus(userTicket.id);
+      setEmailDelivery(updatedStatus);
+    } catch (err) {
+      setResendMessage('Failed to send email pass.');
+    } finally {
+      setEmailSending(false);
+    }
+  };
 
   return (
     <div className="min-h-[85vh] bg-[#08080C] py-12 px-4 sm:px-6 lg:px-8">
@@ -211,6 +236,39 @@ export const AccountPage: React.FC = () => {
                   <span className="text-emerald-400 font-bold">{userTicket.status}</span>
                 </div>
               </div>
+
+              {/* EMAIL DELIVERY STATUS & RESEND ACTION */}
+              <div className="p-4 bg-[#181824] border border-[#222232] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono">
+                <div className="flex items-center space-x-2">
+                  <Mail className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="text-zinc-400 block uppercase text-[10px]">EMAIL DELIVERY</span>
+                    <span className="text-white font-semibold">
+                      {emailDelivery?.delivered
+                        ? `Delivered to ${emailDelivery.recipientEmail || displayEmail}`
+                        : emailDelivery?.status === 'FAILED'
+                        ? 'Email delivery failed'
+                        : `Ready to send to ${displayEmail}`}
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleResendEmail}
+                  disabled={emailSending}
+                  variant="outline"
+                  size="sm"
+                  icon={emailSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                >
+                  {emailSending ? 'Sending...' : 'Email Pass'}
+                </Button>
+              </div>
+
+              {resendMessage && (
+                <p className="text-xs font-mono text-amber-400 text-center animate-in fade-in">
+                  {resendMessage}
+                </p>
+              )}
 
               {/* Reused TicketCard Component for presentation */}
               <TicketCard ticket={userTicket} ticketIndex={1} totalTickets={1} />

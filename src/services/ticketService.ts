@@ -431,3 +431,83 @@ export const validateTicketForVoting = async (
     return { valid: false, error: 'Ticket validation error. Please try again.' };
   }
 };
+
+/**
+ * Triggers ticket email delivery via Supabase Edge Function `send_ticket_email`.
+ */
+export interface EmailDeliveryStatus {
+  delivered: boolean;
+  status: 'SENT' | 'PENDING' | 'FAILED' | 'UNSENT' | 'NOT_FOUND';
+  recipientEmail?: string;
+  sentAt?: string;
+  errorMessage?: string;
+}
+
+export const sendTicketEmail = async (
+  ticketCode: string,
+  isResend: boolean = false
+): Promise<{ success: boolean; alreadySent?: boolean; message?: string }> => {
+  if (!ticketCode) return { success: false, message: 'Ticket code is required' };
+
+  if (!isSupabaseEnabled || !supabase) {
+    console.log(`[TicketService Mock] Email simulated for ticket ${ticketCode}`);
+    return { success: true, message: 'Mock email delivery simulated.' };
+  }
+
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+
+    const { data, error } = await supabase.functions.invoke('send_ticket_email', {
+      body: { ticket_code: ticketCode, is_resend: isResend },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (error) {
+      logSupabaseError('TicketService', 'sendTicketEmail', error);
+      return { success: false, message: error.message || 'Failed to trigger ticket email.' };
+    }
+
+    return {
+      success: data?.success ?? false,
+      alreadySent: data?.alreadySent ?? false,
+      message: data?.message || (data?.success ? 'Email pass sent!' : 'Email delivery failed.'),
+    };
+  } catch (err: any) {
+    logSupabaseError('TicketService', 'sendTicketEmail', err);
+    return { success: false, message: err?.message || 'Email delivery error.' };
+  }
+};
+
+/**
+ * Checks email delivery status for a given ticket code.
+ */
+export const getEmailDeliveryStatus = async (ticketCode: string): Promise<EmailDeliveryStatus> => {
+  if (!ticketCode) return { delivered: false, status: 'NOT_FOUND' };
+
+  if (!isSupabaseEnabled || !supabase) {
+    return { delivered: true, status: 'SENT', recipientEmail: 'mock@student.edu', sentAt: new Date().toISOString() };
+  }
+
+  try {
+    const { data, error } = await (supabase as any).rpc('get_email_delivery_status', {
+      p_ticket_code: ticketCode,
+    });
+
+    if (error || !data) {
+      return { delivered: false, status: 'UNSENT' };
+    }
+
+    return {
+      delivered: data.delivered === true,
+      status: data.status || 'UNSENT',
+      recipientEmail: data.recipient_email,
+      sentAt: data.sent_at,
+      errorMessage: data.error_message,
+    };
+  } catch (err) {
+    logSupabaseError('TicketService', 'getEmailDeliveryStatus', err);
+    return { delivered: false, status: 'UNSENT' };
+  }
+};
+

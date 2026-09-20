@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { BuyerDetails, TicketOrder } from '../types';
-import { processMockPaymentAndCreateTickets, getTicket, getUserTicket } from '../services/ticketService';
+import { processMockPaymentAndCreateTickets, getTicket, getUserTicket, sendTicketEmail } from '../services/ticketService';
 import { useAuth } from '../context/AuthContext';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Badge } from '../components/ui/Badge';
@@ -9,7 +9,7 @@ import { QuantitySelector } from '../components/ticketing/QuantitySelector';
 import { OrderSummary } from '../components/ticketing/OrderSummary';
 import { PaymentModal } from '../components/ticketing/PaymentModal';
 import { TicketCard } from '../components/ticketing/TicketCard';
-import { Ticket, Sparkles, ArrowLeft, ArrowRight, CheckCircle2, ShieldCheck, Mail, User, AlertCircle } from 'lucide-react';
+import { Ticket, Sparkles, ArrowLeft, ArrowRight, CheckCircle2, ShieldCheck, Mail, User, AlertCircle, RefreshCw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 export const TicketPage: React.FC = () => {
@@ -31,6 +31,7 @@ export const TicketPage: React.FC = () => {
   const [orderResult, setOrderResult] = useState<TicketOrder | null>(null);
   const [activeTicketTab, setActiveTicketTab] = useState(0);
   const [hasExistingTicket, setHasExistingTicket] = useState<boolean>(false);
+  const [emailSentState, setEmailSentState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
 
   // Auto-prefill name and email when user is authenticated
   useEffect(() => {
@@ -138,12 +139,27 @@ export const TicketPage: React.FC = () => {
       setOrderResult(order);
       setShowPaymentModal(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      // Asynchronously trigger ticket email delivery in background
+      if (order.tickets && order.tickets.length > 0) {
+        setEmailSentState('sending');
+        sendTicketEmail(order.tickets[0].id)
+          .then((res) => {
+            if (res.success) {
+              setEmailSentState('sent');
+            } else {
+              setEmailSentState('failed');
+            }
+          })
+          .catch(() => setEmailSentState('failed'));
+      }
     } catch (err: any) {
       setPaymentError(err.message || 'Payment processing failed.');
     } finally {
       setIsProcessing(false);
     }
   };
+
 
   return (
     <main className="min-h-screen pt-32 pb-24 bg-[#08080C] bg-noise">
@@ -224,6 +240,19 @@ export const TicketPage: React.FC = () => {
                 <Mail className="w-4 h-4 text-amber-400" />
                 <span>Ticket pass is linked to <strong>{buyer.email}</strong>.</span>
               </p>
+
+              {emailSentState === 'sending' && (
+                <p className="text-xs font-mono text-amber-400 animate-pulse flex items-center justify-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Transmitting ticket pass to your email inbox...</span>
+                </p>
+              )}
+              {emailSentState === 'sent' && (
+                <p className="text-xs font-mono text-emerald-400 flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Ticket pass delivered to your email inbox!</span>
+                </p>
+              )}
 
               <div className="flex justify-center gap-4 pt-2">
                 <Button href="/account" variant="primary" size="lg" icon={<User className="w-4 h-4" />}>
