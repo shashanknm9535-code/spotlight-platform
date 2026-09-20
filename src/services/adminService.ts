@@ -11,6 +11,7 @@ import type {
   LiveEventState,
   AdminTicketOrder,
   OverviewStats,
+  JudgeDetail,
 } from '../types';
 import { supabase, isSupabaseEnabled, isUuid, logSupabaseError } from '../lib/supabase/client';
 import type { DbAct, DbTicket, DbJudge } from '../types/database';
@@ -558,5 +559,140 @@ export const getOverviewStats = async (): Promise<OverviewStats> => {
       activeJudges: 0,
       totalJudges: 0,
     };
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JUDGE MANAGEMENT — Admin-only CRUD
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches all judge records (active + inactive).
+ * Requires active-admin session (enforced by RLS via judges_admin_all policy).
+ */
+export const getJudges = async (): Promise<JudgeDetail[]> => {
+  if (!isSupabaseEnabled || !supabase) {
+    // Mock mode: return hard-coded mock judges
+    const { MOCK_JUDGES } = await import('../data/eventData');
+    return MOCK_JUDGES.map((j) => ({
+      id: j.id,
+      name: j.name,
+      email: '',
+      code: j.code,
+      isAnchor: false,
+      isActive: true,
+    }));
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('judges')
+      .select('id, name, email, judge_code, is_anchor, is_active, auth_user_id, created_at')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      logSupabaseError('AdminService', 'getJudges', error);
+      return [];
+    }
+    if (!data) return [];
+
+    return (data as any[]).map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email || '',
+      code: row.judge_code,
+      isAnchor: row.is_anchor ?? false,
+      isActive: row.is_active ?? true,
+      authUserId: row.auth_user_id || null,
+      createdAt: row.created_at,
+    }));
+  } catch (err) {
+    logSupabaseError('AdminService', 'getJudges', err);
+    return [];
+  }
+};
+
+/**
+ * Creates a new judge record via the admin_create_judge security-definer RPC.
+ * The RPC auto-generates the JUDGE-XX code and enforces admin-only access.
+ * No service-role key is used in the browser.
+ */
+export const createJudge = async (
+  name: string,
+  email: string,
+  isAnchor: boolean = false
+): Promise<JudgeDetail | null> => {
+  if (!isSupabaseEnabled || !supabase) {
+    // Mock mode stub
+    const newJudge: JudgeDetail = {
+      id: `mock-judge-${Date.now()}`,
+      name,
+      email,
+      code: `JUDGE-0${Math.floor(Math.random() * 90 + 10)}`,
+      isAnchor,
+      isActive: true,
+    };
+    return newJudge;
+  }
+
+  try {
+    const { data, error } = await (supabase as any).rpc('admin_create_judge', {
+      p_name: name,
+      p_email: email,
+      p_is_anchor: isAnchor,
+    });
+
+    if (error) {
+      logSupabaseError('AdminService', 'createJudge', error);
+      const msg = error.message || '';
+      if (msg.includes('UNAUTHORIZED')) throw new Error('Only active admins can create judges.');
+      if (msg.includes('INVALID_EMAIL')) throw new Error('A valid email address is required.');
+      if (msg.includes('INVALID_NAME')) throw new Error('Judge full name is required.');
+      throw new Error('Failed to create judge. Please try again.');
+    }
+
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      code: data.code,
+      isAnchor: data.is_anchor ?? isAnchor,
+      isActive: data.is_active ?? true,
+    };
+  } catch (err: any) {
+    if (err?.message && !err?.code) throw err;
+    logSupabaseError('AdminService', 'createJudge', err);
+    throw new Error(err?.message || 'Failed to create judge.');
+  }
+};
+
+/**
+ * Toggles judge active status (activate / deactivate).
+ * Uses direct UPDATE protected by the judges_admin_all RLS policy.
+ */
+export const setJudgeActive = async (
+  judgeId: string,
+  isActive: boolean
+): Promise<boolean> => {
+  if (!isSupabaseEnabled || !supabase) {
+    return true;
+  }
+
+  try {
+    const { error } = await (supabase as any)
+      .from('judges')
+      .update({ is_active: isActive })
+      .eq('id', judgeId);
+
+    if (error) {
+      logSupabaseError('AdminService', 'setJudgeActive', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    logSupabaseError('AdminService', 'setJudgeActive', err);
+    return false;
   }
 };

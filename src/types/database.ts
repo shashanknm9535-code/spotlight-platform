@@ -198,6 +198,18 @@ export interface ActMemberInsert {
   created_at?: string;
 }
 
+export interface JudgeAssignmentRow {
+  id: string;
+  event_id: string;
+  judge_id: string;
+  start_time: string;
+  end_time: string;
+  role_override: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface JudgeInsert {
   id?: string;
   name: string;
@@ -205,7 +217,20 @@ export interface JudgeInsert {
   judge_code: string;
   is_anchor?: boolean;
   is_active?: boolean;
+  auth_user_id?: string | null;
   created_at?: string;
+}
+
+export interface JudgeAssignmentInsert {
+  id?: string;
+  event_id: string;
+  judge_id: string;
+  start_time: string;
+  end_time: string;
+  role_override?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface JudgeScoreInsert {

@@ -174,6 +174,34 @@ export interface JudgeIdentity {
   name: string;
   title: string;
   role: string;
+  email?: string;
+  isAnchor?: boolean;
+  isActive?: boolean;
+}
+
+export interface JudgeDetail {
+  id: string;
+  name: string;
+  email: string;
+  code: string;
+  isAnchor: boolean;
+  isActive: boolean;
+  authUserId?: string | null;
+  createdAt?: string;
+}
+
+export interface JudgeAssignment {
+  id: string;
+  eventId: string;
+  judgeId: string;
+  judgeName?: string;
+  judgeCode?: string;
+  startTime: string;
+  endTime: string;
+  roleOverride?: 'ANCHOR' | 'PANEL' | null;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface JudgeScore {
