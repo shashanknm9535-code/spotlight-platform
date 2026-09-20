@@ -4,3 +4,7 @@ verify_jwt = false
 [functions.send_ticket_email]
 verify_jwt = false
 
+[functions.create_volunteer]
+verify_jwt = false
+
+

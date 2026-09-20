@@ -5,6 +5,7 @@ import {
   Users,
   ListOrdered,
   Ticket,
+  UserCheck,
   Radio,
   Award,
   BarChart2,
@@ -24,11 +25,13 @@ const NAV_ITEMS: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
   { id: 'registrations', label: 'Registrations', icon: <Users className="w-4 h-4" /> },
   { id: 'running-order', label: 'Running Order', icon: <ListOrdered className="w-4 h-4" /> },
   { id: 'tickets', label: 'Tickets', icon: <Ticket className="w-4 h-4" /> },
+  { id: 'volunteers', label: 'Volunteers', icon: <UserCheck className="w-4 h-4" /> },
   { id: 'live', label: 'Live Event', icon: <Radio className="w-4 h-4" /> },
   { id: 'judges', label: 'Judges', icon: <Award className="w-4 h-4" /> },
   { id: 'results', label: 'Results', icon: <BarChart2 className="w-4 h-4" /> },
   { id: 'stage', label: 'Stage Display', icon: <Tv className="w-4 h-4" /> },
 ];
+
 
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({

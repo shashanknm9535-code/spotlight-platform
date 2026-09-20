@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
-import type { JudgeIdentity, UserProfile } from '../types';
+import type { JudgeIdentity, UserProfile, VolunteerIdentity } from '../types';
 import {
   getCurrentSession,
   subscribeToAuthChanges,
   ensureUserProfile,
   checkIsActiveAdmin,
   checkIsActiveJudge,
+  checkIsActiveVolunteer,
+  attemptVolunteerLink,
   signInWithGoogle as googleSignIn,
   signOutSession,
 } from '../services/authService';
@@ -17,6 +19,8 @@ interface AuthContextType {
   profile: UserProfile | null;
   isAdmin: boolean;
   judge: JudgeIdentity | null;
+  volunteer: VolunteerIdentity | null;
+  isVolunteer: boolean;
   isLoading: boolean;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<boolean>;
@@ -29,6 +33,8 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   isAdmin: false,
   judge: null,
+  volunteer: null,
+  isVolunteer: false,
   isLoading: true,
   signInWithGoogle: async () => ({ error: 'AuthContext not initialized' }),
   signOut: async () => true,
@@ -41,6 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [judge, setJudge] = useState<JudgeIdentity | null>(null);
+  const [volunteer, setVolunteer] = useState<VolunteerIdentity | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const loadUserData = useCallback(async (currentSession: Session | null) => {
@@ -50,6 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfile(null);
       setIsAdmin(false);
       setJudge(null);
+      setVolunteer(null);
       setIsLoading(false);
       return;
     }
@@ -59,15 +67,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSession(currentSession);
 
     // Parallelize role & profile checks for optimal performance
-    const [userProfile, adminStatus, judgeIdentity] = await Promise.all([
+    const [userProfile, adminStatus, judgeIdentity, volunteerIdentity] = await Promise.all([
       ensureUserProfile(currentUser),
       checkIsActiveAdmin(currentUser.id),
       checkIsActiveJudge(currentUser.id),
+      checkIsActiveVolunteer(currentUser.id),
     ]);
 
     setProfile(userProfile);
     setIsAdmin(adminStatus);
     setJudge(judgeIdentity);
+
+    // Transparent Google-identity link:
+    // If the user has no active volunteer record yet, invoke the SECURITY DEFINER
+    // RPC link_volunteer_google_identity(). It reads the caller's email from
+    // auth.users (server-side) and links auth_user_id if a matching pending
+    // volunteer row exists. This activates scanner access on the very first
+    // Google sign-in — no second login required.
+    let resolvedVolunteer = volunteerIdentity;
+    if (!resolvedVolunteer) {
+      const linked = await attemptVolunteerLink();
+      if (linked) {
+        resolvedVolunteer = await checkIsActiveVolunteer(currentUser.id);
+      }
+    }
+
+    setVolunteer(resolvedVolunteer);
     setIsLoading(false);
   }, []);
 
@@ -112,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfile(null);
       setIsAdmin(false);
       setJudge(null);
+      setVolunteer(null);
     }
     return success;
   };
@@ -124,6 +150,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profile,
         isAdmin,
         judge,
+        volunteer,
+        isVolunteer: volunteer !== null || isAdmin,
         isLoading,
         signInWithGoogle,
         signOut,
@@ -134,5 +162,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </AuthContext.Provider>
   );
 };
+
 
 export const useAuth = (): AuthContextType => useContext(AuthContext);

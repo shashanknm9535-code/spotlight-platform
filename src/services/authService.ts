@@ -260,6 +260,71 @@ export const checkIsActiveJudge = async (userId: string): Promise<JudgeIdentity 
 };
 
 /**
+ * Verify if the authenticated user is an active volunteer in volunteers table.
+ * If found, returns mapped VolunteerIdentity.
+ */
+export const checkIsActiveVolunteer = async (
+  userId: string
+): Promise<import('../types').VolunteerIdentity | null> => {
+  if (!isSupabaseEnabled || !supabase || !userId) return null;
+  try {
+    const { data, error } = await (supabase as any)
+      .from('volunteers')
+      .select('*')
+      .eq('auth_user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error) {
+      logSupabaseError('AuthService', 'checkIsActiveVolunteer', error);
+      return null;
+    }
+    if (!data) return null;
+    const payload = data as any;
+
+    return {
+      id: payload.id,
+      code: payload.volunteer_code,
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone || undefined,
+      isActive: payload.is_active,
+      createdAt: payload.created_at,
+    };
+  } catch (err) {
+    logSupabaseError('AuthService', 'checkIsActiveVolunteer', err);
+    return null;
+  }
+};
+
+
+/**
+ * Attempt to link the currently authenticated Google user to a pending volunteer
+ * record whose email matches the caller's auth.users.email.
+ *
+ * This is called transparently after every Google sign-in when the user is
+ * not yet resolved as an active volunteer. The SECURITY DEFINER RPC reads
+ * the email from auth.users (server-side) — no frontend email claim is trusted.
+ *
+ * Returns true if a link was established (new or already linked).
+ * Returns false if no pending record matches, or on any error.
+ */
+export const attemptVolunteerLink = async (): Promise<boolean> => {
+  if (!isSupabaseEnabled || !supabase) return false;
+  try {
+    const { data, error } = await (supabase as any).rpc('link_volunteer_google_identity');
+    if (error) {
+      // Not a hard error — simply means this user is not a pending volunteer
+      return false;
+    }
+    return data?.success === true;
+  } catch (err) {
+    logSupabaseError('AuthService', 'attemptVolunteerLink', err);
+    return false;
+  }
+};
+
+/**
  * Subscribe to Supabase Auth state changes.
  */
 export const subscribeToAuthChanges = (

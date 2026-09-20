@@ -31,10 +31,12 @@ import { RunningOrderTab } from '../components/admin/RunningOrderTab';
 import { LiveEventTab } from '../components/admin/LiveEventTab';
 import { JudgesTab } from '../components/admin/JudgesTab';
 import { TicketsTab } from '../components/admin/TicketsTab';
+import { VolunteersTab } from '../components/admin/VolunteersTab';
 import { StageTab } from '../components/admin/StageTab';
 import { ResultsTab } from '../components/admin/ResultsTab';
 import { AdminDevControls } from '../components/admin/AdminDevControls';
 import { Shield, KeyRound, ArrowRight, AlertTriangle } from 'lucide-react';
+
 
 export const AdminPage: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -365,6 +367,8 @@ export const AdminPage: React.FC = () => {
               )}
 
               {activeTab === 'tickets' && <TicketsTab />}
+
+              {activeTab === 'volunteers' && <VolunteersTab />}
 
               {activeTab === 'live' && (
                 <LiveEventTab

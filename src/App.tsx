@@ -13,6 +13,7 @@ import { LeaderboardPage } from './pages/LeaderboardPage';
 import { StagePage } from './pages/StagePage';
 import { LoginPage } from './pages/LoginPage';
 import { AccountPage } from './pages/AccountPage';
+import { ScannerPage } from './pages/ScannerPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 export const App: React.FC = () => {
@@ -26,6 +27,7 @@ export const App: React.FC = () => {
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/account" element={<AccountPage />} />
+              <Route path="/scanner" element={<ScannerPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/ticket" element={<TicketPage />} />
               <Route path="/vote" element={<VotePage />} />
@@ -42,6 +44,7 @@ export const App: React.FC = () => {
     </AuthProvider>
   );
 };
+
 
 export default App;
 

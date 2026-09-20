@@ -251,10 +251,76 @@ export type AdminTab =
   | 'registrations'
   | 'running-order'
   | 'tickets'
+  | 'volunteers'
   | 'live'
   | 'judges'
   | 'results'
   | 'stage';
+
+/* Phase 4: Volunteer & Venue Entry Types */
+export interface VolunteerIdentity {
+  id: string;
+  code: string;
+  name: string;
+  email: string;
+  phone?: string;
+  isActive: boolean;
+  scansCount?: number;
+  createdAt?: string;
+}
+
+export interface VolunteerCreationResult {
+  success: boolean;
+  alreadyExists: boolean;
+  volunteer: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    code: string;
+    isActive: boolean;
+    /** false = pending Google sign-in; true = Google account already linked */
+    authLinked: boolean;
+    createdAt?: string;
+  };
+  message: string;
+}
+
+export type EntryResultCode =
+  | 'VALID_ENTRY'
+  | 'ALREADY_ENTERED'
+  | 'INVALID_TICKET'
+  | 'UNPAID_TICKET'
+  | 'WRONG_EVENT'
+  | 'ENTRY_CLOSED'
+  | 'NO_ACTIVE_EVENT'
+  | 'UNAUTHORIZED_VOLUNTEER'
+  | 'SCANNER_ERROR';
+
+export interface EntryScanResult {
+  success: boolean;
+  resultCode: EntryResultCode;
+  message: string;
+  attendeeName?: string;
+  ticketCode?: string;
+  scannedAt?: string;
+  firstScannedAt?: string;
+  scannedBy?: string;
+}
+
+export interface EntryStats {
+  totalEntries: number;
+  totalPaidTickets: number;
+  scanningOpen: boolean;
+  recentEntries: Array<{
+    id: string;
+    ticketCode: string;
+    attendeeName: string;
+    volunteerName: string;
+    scannedAt: string;
+  }>;
+}
+
 
 export type RegistrationStatus = 'pending' | 'confirmed' | 'rejected';
 

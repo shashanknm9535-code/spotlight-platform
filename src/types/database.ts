@@ -50,9 +50,11 @@ export interface EventRow {
   status: EventStatus;
   current_act_id: string | null;
   voting_open: boolean;
+  entry_scanning_open?: boolean;
   created_at: string;
   updated_at: string;
 }
+
 
 export interface ActRow {
   id: string;
