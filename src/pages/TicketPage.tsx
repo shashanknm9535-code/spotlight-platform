@@ -294,11 +294,17 @@ export const TicketPage: React.FC = () => {
                     </div>
                   ) : (
                     <>
-                      {/* QUANTITY SELECTOR (Single ticket per identity) */}
-                      <QuantitySelector
-                        quantity={buyer.quantity}
-                        onChange={(qty) => setBuyer((prev) => ({ ...prev, quantity: qty }))}
-                      />
+                      {/* SINGLE TICKET FIXED PASS DISPLAY */}
+                      <div className="p-4 bg-[#141420] border border-amber-400/40 flex items-center justify-between font-mono text-xs">
+                        <div>
+                          <span className="text-zinc-400 block uppercase">AUDIENCE PASS</span>
+                          <span className="text-white font-bold text-sm">1 AUDIENCE TICKET</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-zinc-400 block uppercase font-mono">PRICE</span>
+                          <span className="text-amber-400 font-bold text-lg">₹10</span>
+                        </div>
+                      </div>
 
                       {/* FULL NAME */}
                       <div>
@@ -358,7 +364,7 @@ export const TicketPage: React.FC = () => {
                         fullWidth
                         icon={<ArrowRight className="w-5 h-5" />}
                       >
-                        Continue to Payment (₹{buyer.quantity * 10})
+                        Continue to Payment (₹10)
                       </Button>
                     </>
                   )}
@@ -367,7 +373,7 @@ export const TicketPage: React.FC = () => {
 
               {/* RIGHT COLUMN: ORDER SUMMARY */}
               <div className="lg:col-span-5">
-                <OrderSummary quantity={buyer.quantity} />
+                <OrderSummary quantity={1} />
               </div>
             </div>
           </div>

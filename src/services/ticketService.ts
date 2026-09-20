@@ -138,7 +138,7 @@ export const getUserTicket = async (userId: string): Promise<Ticket | null> => {
   try {
     const { data, error } = await supabase
       .from('tickets')
-      .select('id, ticket_code, user_id, buyer_name, buyer_email, buyer_phone, payment_status, created_at')
+      .select('id, ticket_code, user_id, event_id, buyer_name, buyer_email, buyer_phone, payment_status, created_at')
       .eq('user_id', userId)
       .eq('payment_status', 'PAID')
       .maybeSingle();
@@ -159,6 +159,7 @@ export const getUserTicket = async (userId: string): Promise<Ticket | null> => {
       status: row.payment_status === 'PAID' ? 'CONFIRMED' : 'PENDING',
       createdAt: row.created_at,
       userId: row.user_id || undefined,
+      eventId: row.event_id || undefined,
     };
   } catch (err) {
     logSupabaseError('TicketService', 'getUserTicket', err);
@@ -167,9 +168,9 @@ export const getUserTicket = async (userId: string): Promise<Ticket | null> => {
 };
 
 /**
- * Ticket order processing service.
- * Simulates payment gateway processing and creates real ticket records in Supabase
- * linked to the authenticated user's ID.
+ * Ticket order processing service for authenticated users.
+ * Enforces quantity = 1 (1 audience ticket per user per event) and derives ticket ownership
+ * server-side via auth.uid().
  */
 export const processMockPaymentAndCreateTickets = async (
   buyer: BuyerDetails,
@@ -183,14 +184,13 @@ export const processMockPaymentAndCreateTickets = async (
     throw new Error('Payment was declined by the bank. Please try again.');
   }
 
-  if (buyer.quantity < 1 || buyer.quantity > 10) {
-    throw new Error('Ticket quantity must be between 1 and 10.');
-  }
+  // Enforce single-ticket rule (quantity must be exactly 1)
+  const quantity = 1;
 
   // ── MOCK MODE FALLBACK ──────────────────────────────────────────────────────
   if (!isSupabaseEnabled || !supabase) {
     if (userId && MOCK_USER_TICKETS.has(userId)) {
-      throw new Error('You already have an active Spotlight ticket.');
+      throw new Error('You already have a Spotlight ticket.');
     }
 
     const orderRandom = Math.floor(1000 + Math.random() * 9000);
@@ -198,53 +198,58 @@ export const processMockPaymentAndCreateTickets = async (
     const orderId = `SPT-ORD-2026-${orderRandom}`;
     const paymentId = `PAY-2026-${payRandom}`;
     const now = new Date().toISOString();
+    const tktCode = generateTicketCode();
 
-    const tickets: Ticket[] = Array.from({ length: buyer.quantity }, (_, i) => {
-      const tktCode = generateTicketCode();
-      const tkt: Ticket = {
-        id: tktCode,
-        qrValue: tktCode,
-        buyerName: buyer.name,
-        buyerEmail: buyer.email,
-        buyerPhone: buyer.phone,
-        status: 'CONFIRMED',
-        createdAt: now,
-        userId: userId || undefined,
-      };
-      if (userId && i === 0) {
-        MOCK_USER_TICKETS.set(userId, tkt);
-      }
-      return tkt;
-    });
+    const tkt: Ticket = {
+      id: tktCode,
+      qrValue: tktCode,
+      buyerName: buyer.name,
+      buyerEmail: buyer.email,
+      buyerPhone: buyer.phone,
+      status: 'CONFIRMED',
+      createdAt: now,
+      userId: userId || undefined,
+    };
+
+    if (userId) {
+      MOCK_USER_TICKETS.set(userId, tkt);
+    }
 
     return {
       id: orderId,
       paymentId,
-      tickets,
-      quantity: buyer.quantity,
+      tickets: [tkt],
+      quantity: 1,
       unitPrice: TICKET_PRICE,
-      totalAmount: buyer.quantity * TICKET_PRICE,
+      totalAmount: TICKET_PRICE,
       status: 'CONFIRMED',
       createdAt: now,
     };
   }
 
-  // ── SUPABASE LIVE PERSISTENCE WITH ATOMIC TRANSACTION LOCKING ───────────────
+  // ── SUPABASE LIVE PERSISTENCE WITH SERVER-SIDE auth.uid() ENFORCEMENT ────────
   try {
+    // Note: Do NOT pass p_user_id. The RPC derives user identity strictly from auth.uid().
     const { data, error } = await (supabase as any).rpc('purchase_tickets_atomic', {
       p_buyer_name: buyer.name.trim(),
       p_buyer_email: buyer.email.trim(),
       p_buyer_phone: buyer.phone.trim(),
-      p_quantity: buyer.quantity,
+      p_quantity: 1,
       p_payment_method: 'upi',
-      p_user_id: userId || null,
     });
 
     if (error || !data || !data.success) {
       logSupabaseError('TicketService', 'purchase_tickets_atomic', error);
       const errMsg = error?.hint || error?.message || 'Ticket creation failed.';
-      if (errMsg.includes('ALREADY_HAS_TICKET')) {
-        throw new Error('You already have an active Spotlight ticket linked to your account.');
+      if (
+        errMsg.includes('ALREADY_HAS_TICKET') ||
+        error?.code === '23505' ||
+        errMsg.includes('tickets_user_event_active_unique')
+      ) {
+        throw new Error('You already have a Spotlight ticket.');
+      }
+      if (errMsg.includes('AUTHENTICATION_REQUIRED')) {
+        throw new Error('Sign in with Google before purchasing a Spotlight ticket.');
       }
       if (errMsg.includes('CAPACITY_EXCEEDED')) {
         throw new Error('Tickets are currently sold out or remaining capacity is insufficient.');
@@ -274,9 +279,9 @@ export const processMockPaymentAndCreateTickets = async (
       id: res.order_code,
       paymentId: 'MOCK-PAY-' + res.order_code,
       tickets,
-      quantity: res.tickets.length,
+      quantity: 1,
       unitPrice: TICKET_PRICE,
-      totalAmount: res.total_amount,
+      totalAmount: res.total_amount || TICKET_PRICE,
       status: 'CONFIRMED',
       createdAt: new Date().toISOString(),
     };

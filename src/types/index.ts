@@ -105,6 +105,7 @@ export interface Ticket {
   status: TicketStatus;
   createdAt: string;
   userId?: string;
+  eventId?: string;
 }
 
 export interface TicketOrder {
